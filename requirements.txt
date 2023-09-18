@@ -1,0 +1,5 @@
+ray[rllib]==1.11.1
+torch==1.9.0
+scikit-video
+types-tqdm
+numpy==1.19.5

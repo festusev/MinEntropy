@@ -1,0 +1,49 @@
+{
+  "custom_eval_function": "<function build_overcooked_eval_function.<locals>._evaluate at 0x0000021EE23035E0>",
+  "env": "overcooked_multi_agent",
+  "env_config": {
+    "env_params": {
+      "horizon": 1,
+      "mlam_params": {
+        "counter_drop": [],
+        "counter_goals": [],
+        "counter_pickup": [],
+        "same_motion_goals": true,
+        "start_orientations": false,
+        "wait_allowed": false
+      }
+    },
+    "mdp_params": {
+      "layout_name": "forced_coordination"
+    },
+    "multi_agent_params": {}
+  },
+  "evaluation_interval": 1000,
+  "framework": "torch",
+  "input": "data/human_data/human_data_state_dict_and_action_by_traj_test_inserted_fixed_forced_coordination_8_traj",
+  "lr": 0.001,
+  "lr_drop_patience": 5,
+  "multiagent": {
+    "policies": {
+      "default_policy": [
+        null,
+        "Box([-10. -10. -10. -10. -10. -10. -10. -10. -10. -10. -10. -10. -10. -10.\n -10. -10. -10. -10. -10. -10. -10. -10. -10. -10. -10. -10. -10. -10.\n -10. -10. -10. -10. -10. -10. -10. -10. -10. -10. -10. -10. -10. -10.\n -10. -10. -10. -10. -10. -10. -10. -10. -10. -10. -10. -10. -10. -10.\n -10. -10. -10. -10. -10. -10.], [10. 10. 10. 10. 10. 10. 10. 10. 10. 10. 10. 10. 10. 10. 10. 10. 10. 10.\n 10. 10. 10. 10. 10. 10. 10. 10. 10. 10. 10. 10. 10. 10. 10. 10. 10. 10.\n 10. 10. 10. 10. 10. 10. 10. 10. 10. 10. 10. 10. 10. 10. 10. 10. 10. 10.\n 10. 10. 10. 10. 10. 10. 10. 10.], (62,), float32)",
+        "Discrete(6)",
+        {
+          "model": {
+            "fcnet_activation": "relu",
+            "fcnet_hiddens": [
+              64,
+              64
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "num_gpus": 0,
+  "num_workers": 0,
+  "seed": 0,
+  "sgd_minibatch_size": 64,
+  "validation_prop": 0
+}

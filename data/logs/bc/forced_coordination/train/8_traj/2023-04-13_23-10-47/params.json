@@ -1,0 +1,52 @@
+{
+  "custom_eval_function": "<function build_overcooked_eval_function.<locals>._evaluate at 0x000001E3EBCB4670>",
+  "env": "overcooked_multi_agent",
+  "env_config": {
+    "env_params": {
+      "horizon": 1,
+      "mlam_params": {
+        "counter_drop": [],
+        "counter_goals": [],
+        "counter_pickup": [],
+        "same_motion_goals": true,
+        "start_orientations": false,
+        "wait_allowed": false
+      }
+    },
+    "mdp_params": {
+      "layout_name": "forced_coordination"
+    },
+    "multi_agent_params": {}
+  },
+  "evaluation_interval": 1000,
+  "framework": "torch",
+  "input": "data/human_data/human_data_state_dict_and_action_by_traj_train_inserted_fixed_forced_coordination_8_traj_ppo_features",
+  "lr": 0.001,
+  "lr_drop_patience": 5,
+  "multiagent": {
+    "policies": {
+      "default_policy": [
+        null,
+        "Box([[[0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.\n   0. 0. 0.]\n  [0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.\n   0. 0. 0.]\n  [0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.\n   0. 0. 0.]\n  [0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.\n   0. 0. 0.]\n  [0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.\n   0. 0. 0.]]\n\n [[0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.\n   0. 0. 0.]\n  [0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.\n   0. 0. 0.]\n  [0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.\n   0. 0. 0.]\n  [0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.\n   0. 0. 0.]\n  [0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.\n   0. 0. 0.]]\n\n [[0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.\n   0. 0. 0.]\n  [0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.\n   0. 0. 0.]\n  [0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.\n   0. 0. 0.]\n  [0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.\n   0. 0. 0.]\n  [0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.\n   0. 0. 0.]]\n\n [[0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.\n   0. 0. 0.]\n  [0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.\n   0. 0. 0.]\n  [0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.\n   0. 0. 0.]\n  [0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.\n   0. 0. 0.]\n  [0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.\n   0. 0. 0.]]\n\n [[0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.\n   0. 0. 0.]\n  [0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.\n   0. 0. 0.]\n  [0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.\n   0. 0. 0.]\n  [0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.\n   0. 0. 0.]\n  [0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0. 0.\n   0. 0. 0.]]], [[[inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf\n   inf inf inf inf inf inf inf inf inf]\n  [inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf\n   inf inf inf inf inf inf inf inf inf]\n  [inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf\n   inf inf inf inf inf inf inf inf inf]\n  [inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf\n   inf inf inf inf inf inf inf inf inf]\n  [inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf\n   inf inf inf inf inf inf inf inf inf]]\n\n [[inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf\n   inf inf inf inf inf inf inf inf inf]\n  [inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf\n   inf inf inf inf inf inf inf inf inf]\n  [inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf\n   inf inf inf inf inf inf inf inf inf]\n  [inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf\n   inf inf inf inf inf inf inf inf inf]\n  [inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf\n   inf inf inf inf inf inf inf inf inf]]\n\n [[inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf\n   inf inf inf inf inf inf inf inf inf]\n  [inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf\n   inf inf inf inf inf inf inf inf inf]\n  [inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf\n   inf inf inf inf inf inf inf inf inf]\n  [inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf\n   inf inf inf inf inf inf inf inf inf]\n  [inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf\n   inf inf inf inf inf inf inf inf inf]]\n\n [[inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf\n   inf inf inf inf inf inf inf inf inf]\n  [inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf\n   inf inf inf inf inf inf inf inf inf]\n  [inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf\n   inf inf inf inf inf inf inf inf inf]\n  [inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf\n   inf inf inf inf inf inf inf inf inf]\n  [inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf\n   inf inf inf inf inf inf inf inf inf]]\n\n [[inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf\n   inf inf inf inf inf inf inf inf inf]\n  [inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf\n   inf inf inf inf inf inf inf inf inf]\n  [inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf\n   inf inf inf inf inf inf inf inf inf]\n  [inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf\n   inf inf inf inf inf inf inf inf inf]\n  [inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf inf\n   inf inf inf inf inf inf inf inf inf]]], (5, 5, 26), float32)",
+        "Discrete(6)",
+        {
+          "model": {
+            "custom_model": "overcooked_ppo_model",
+            "custom_model_config": {
+              "num_conv_layers": 3,
+              "num_filters": 25,
+              "num_hidden_layers": 3,
+              "size_hidden_layers": 64
+            },
+            "vf_share_layers": true
+          }
+        }
+      ]
+    }
+  },
+  "num_gpus": 0,
+  "num_workers": 0,
+  "seed": 0,
+  "sgd_minibatch_size": 64,
+  "validation_prop": 0
+}
