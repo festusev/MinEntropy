@@ -1,0 +1,9 @@
+venv
+__pycache__
+node_modules
+data
+*.ipynb
+.DS_Store
+build
+*.egg-info
+*.whl
