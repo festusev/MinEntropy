@@ -1066,6 +1066,19 @@ class OvercookedGridworld(object):
         # SMIRL
         self.state_vecs = []
 
+
+    # Gets the sufficient statistics (theta, t) for SMIRL
+    # theta is the parameters of the distribution for each feature, t is the number of states seen so far
+    def sufficient_statistics(self):
+        mu = np.mean(self.state_vecs, axis=0)
+        std = np.std(self.state_vecs, axis=0)
+        t = len(self.state_vecs)
+        return [mu, std], t
+
+    @property
+    def sufficient_statistics_size(self):
+        return 26*2 + 1 # There are 26 features. We have the mean and std of each. Plus 1 which stores the number of states seen
+
     def get_state_transition(self, state, joint_action, display_phi=False, motion_planner=None):
         """Gets information about possible transitions for the action.
 
@@ -1857,7 +1870,7 @@ class OvercookedGridworld(object):
 
     @property
     def lossless_state_encoding_shape(self):
-        return np.array(list(self.shape) + [26])
+        return np.array(list(self.shape) + [26 + self.sufficient_statistics_size]) # SMIRL has to append the sufficient statistics
 
 
     def lossless_state_encoding(self, overcooked_state, horizon=400, debug=False):

@@ -117,8 +117,63 @@ class OvercookedPPOModel(TorchModelV2, nn.Module):
 
         return nn.Sequential(*backbone_layers)
 
+    def construct_smirl_backbone(self, *, scale=1, in_channels=None) -> nn.Sequential:
+        # A backbone based on the observation, the sufficient statistics, and an extra scalar that is the current timestep
+        def conv_layers():
+            # We use two conv stacks: one for the observation and one for the sufficient statistics
+            backbone_layers: List[nn.Module] = []
+            for conv_index in range(self.num_conv_layers):
+                if conv_index == 0:
+                    padding = (2, 2)
+                elif conv_index < self.num_conv_layers - 1:
+                    padding = (1, 1)
+                else:
+                    padding = (0, 0)
+
+                backbone_layers.append(
+                    nn.Conv2d(
+                        in_channels=in_channels if conv_index == 0 else num_filters,
+                        out_channels=num_filters,
+                        kernel_size=(5, 5) if conv_index == 0 else (3, 3),
+                        padding=padding,
+                        stride=(1, 1),
+                    )
+                )
+                backbone_layers.append(nn.LeakyReLU())
+
+            backbone_layers.append(nn.Flatten())
+            return backbone_layers
+
+        width, height, obs_channels = self._get_obs_space().shape
+        if in_channels is None:
+            in_channels = self._get_in_channels()
+
+        num_filters = int(scale * self.num_filters)
+        size_hidden_layers = int(scale * self.size_hidden_layers)
+
+        obs_layers = conv_layers()
+        statistics_layers = conv_layers()
+
+        flattened_conv_size = 2*((width - 2) * (height - 2) * num_filters)
+
+        linear_layers = []
+        for fc_index in range(self.num_hidden_layers):
+            linear_layers.append(
+                nn.Linear(
+                    in_features=flattened_conv_size + 1
+                    if fc_index == 0
+                    else size_hidden_layers,
+                    out_features=size_hidden_layers,
+                )
+            )
+            linear_layers.append(nn.LeakyReLU())
+
+        return {"obs": nn.Sequential(*obs_layers),
+                "stats": nn.Sequential(*statistics_layers),
+                "linear": nn.Sequential(*linear_layers)}
+
     def _construct_backbone(self) -> nn.Module:
-        return self.construct_default_backbone()
+        return self.construct_smirl_backbone()
 
     def _get_obs(self, input_dict):
         obs = (
@@ -136,6 +191,7 @@ class OvercookedPPOModel(TorchModelV2, nn.Module):
             return super().get_initial_state()
 
     def forward(self, input_dict, state, seq_lens):
+        import pdb; pdb.set_trace()
         self._obs = self._get_obs(input_dict)
         if self.vf_share_layers:
             self._backbone_out = self.backbone(self._obs)
