@@ -156,6 +156,7 @@ if __name__ == "__main__":
         "mdp_params": {
             "layout_name": layout_name,
             "rew_shaping_params": rew_shaping_params,
+            "smirl": True
         },
         # To be passed into OvercookedEnv constructor
         "env_params": {
