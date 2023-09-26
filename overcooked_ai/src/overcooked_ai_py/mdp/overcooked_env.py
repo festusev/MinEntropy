@@ -261,6 +261,9 @@ class OvercookedEnv(object):
         else:
             self.state = self.start_state_fn()
 
+        # SMIRL
+        self.mdp.reset_state_vec()
+
         events_dict = { k : [ [] for _ in range(self.mdp.num_players) ] for k in EVENT_TYPES }
         rewards_dict = {
             "cumulative_sparse_rewards_by_agent": np.array([0] * self.mdp.num_players),

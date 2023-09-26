@@ -846,7 +846,8 @@ class OvercookedGridworld(object):
     # INSTANTIATION METHODS #
     #########################
 
-    def __init__(self, terrain, start_player_positions, start_bonus_orders=[], rew_shaping_params=None, layout_name="unnamed_layout", start_all_orders=[], num_items_for_soup=3, order_bonus=2, start_state=None, **kwargs):
+    def __init__(self, terrain, start_player_positions, start_bonus_orders=[], rew_shaping_params=None, layout_name="unnamed_layout",
+                 start_all_orders=[], num_items_for_soup=3, order_bonus=2, start_state=None, smirl=False, **kwargs):
         """
         terrain: a matrix of strings that encode the MDP layout
         layout_name: string identifier of the layout
@@ -857,6 +858,7 @@ class OvercookedGridworld(object):
         num_items_for_soup: Maximum number of ingredients that can be placed in a soup
         order_bonus: Multiplicative factor for serving a bonus recipe
         start_state: Default start state returned by get_standard_start_state
+        smirl: Whether or not to use the SMIRL loss
         """
         self._configure_recipes(start_all_orders, num_items_for_soup, **kwargs)
         self.start_all_orders = [r.to_dict() for r in Recipe.ALL_RECIPES] if not start_all_orders else start_all_orders
@@ -872,6 +874,7 @@ class OvercookedGridworld(object):
         self.layout_name = layout_name
         self.order_bonus = order_bonus
         self.start_state = start_state
+        self.smirl = smirl
         self._opt_recipe_discount_cache = {}
         self._opt_recipe_cache = {}
         self._prev_potential_params = {}
@@ -1059,6 +1062,10 @@ class OvercookedGridworld(object):
         # There is a finite horizon, handled by the environment.
         return False
 
+    def reset_state_vecs(self):
+        # SMIRL
+        self.state_vecs = []
+
     def get_state_transition(self, state, joint_action, display_phi=False, motion_planner=None):
         """Gets information about possible transitions for the action.
 
@@ -1080,6 +1087,20 @@ class OvercookedGridworld(object):
 
         # Resolve interacts first
         sparse_reward_by_agent, shaped_reward_by_agent = self.resolve_interacts(new_state, joint_action, events_infos)
+
+        # SMIRL modification
+        if self.smirl:
+            sparse_reward_by_agent = [0, 0]
+            shaped_reward_by_agent = [0, 0]
+
+            new_state_vec = self.lossless_state_encoding(new_state)
+            if len(self.state_vecs) > 0:
+                std_constant = 0.01
+                prob_st = norm.pdf((new_state_vec - np.mean(self.state_vecs, axis=0))/(np.std(self.state_vecs,axis=0) + std_constant))
+                prob_st = np.clip(prob_st, 0.05, 0.95) # clip it
+                sparse_reward_by_agent = [np.log(prob_st).sum(), np.log(prob_st).sum()]
+                sparse_reward_by_agent = np.int32(np.round(sparse_reward_by_agent)).tolist() # Convert to int32
+            self.state_vecs.append(new_state_vec)
 
         assert new_state.player_positions == state.player_positions
         assert new_state.player_orientations == state.player_orientations
