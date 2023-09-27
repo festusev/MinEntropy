@@ -388,9 +388,7 @@ class OvercookedEnv(object):
         total_sparse = sum(self.game_stats["cumulative_sparse_rewards_by_agent"])
         total_shaped = sum(self.game_stats["cumulative_shaped_rewards_by_agent"])
         
-        import pdb; pdb.set_trace()
-
-        return np.array(trajectory), self.state.timestep, total_sparse, total_shaped
+        return trajectory, self.state.timestep, total_sparse, total_shaped
 
     def get_rollouts(self, agent_pair, num_games, display=False, dir=None, final_state=False, display_phi=False,
                      display_until=np.Inf, metadata_fn=None, metadata_info_fn=None, info=True):
@@ -416,7 +414,12 @@ class OvercookedEnv(object):
             rollout_info = self.run_agents(agent_pair, display=display, dir=dir, include_final_state=final_state,
                                            display_phi=display_phi, display_until=display_until)
             trajectory, time_taken, tot_rews_sparse, _tot_rews_shaped = rollout_info
-            obs, actions, rews, dones, infos = trajectory.T[0], trajectory.T[1], trajectory.T[2], trajectory.T[3], trajectory.T[4]
+            # obs, actions, rews, dones, infos = trajectory.T[0], trajectory.T[1], trajectory.T[2], trajectory.T[3], trajectory.T[4]
+            obs, actions, rews, dones, infos = [trajectory[i][0] for i in range(len(trajectory))], \
+                                               [trajectory[i][1] for i in range(len(trajectory))], \
+                                               [trajectory[i][2] for i in range(len(trajectory))], \
+                                               [trajectory[i][3] for i in range(len(trajectory))], \
+                                               [trajectory[i][4] for i in range(len(trajectory))]
             trajectories["ep_states"].append(obs)
             trajectories["ep_actions"].append(actions)
             trajectories["ep_rewards"].append(rews)
