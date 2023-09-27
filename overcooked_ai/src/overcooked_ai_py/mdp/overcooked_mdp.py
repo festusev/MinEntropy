@@ -1105,18 +1105,18 @@ class OvercookedGridworld(object):
         sparse_reward_by_agent, shaped_reward_by_agent = self.resolve_interacts(new_state, joint_action, events_infos)
 
         # SMIRL modification
+        new_state_vec = np.array(self.lossless_state_encoding(new_state))[:, :self.width, :self.height]
         if self.smirl:
             sparse_reward_by_agent = [0, 0]
             shaped_reward_by_agent = [0, 0]
 
-            new_state_vec = np.array(self.lossless_state_encoding(new_state))[:, :self.width, :self.height]
             if len(self.state_vecs) > 0:
                 std_constant = 0.01
                 prob_st = norm.pdf((new_state_vec - np.mean(self.state_vecs, axis=0))/(np.std(self.state_vecs,axis=0) + std_constant))
                 prob_st = np.clip(prob_st, 0.05, 0.95) # clip it
                 sparse_reward_by_agent = [np.log(prob_st).sum(), np.log(prob_st).sum()]
                 sparse_reward_by_agent = np.int32(np.round(sparse_reward_by_agent)).tolist() # Convert to int32
-            self.state_vecs.append(new_state_vec)
+        self.state_vecs.append(new_state_vec)
 
         assert new_state.player_positions == state.player_positions
         assert new_state.player_orientations == state.player_orientations
