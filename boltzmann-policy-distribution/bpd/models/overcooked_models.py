@@ -35,6 +35,7 @@ class OvercookedPPOModel(TorchModelV2, nn.Module):
         )
         nn.Module.__init__(self)
 
+        import pdb; pdb.set_trace()
         custom_model_config = {
             **model_config.get("custom_model_config", {}),
             **kwargs,
@@ -1153,7 +1154,7 @@ class BPDFeaturizeFn(object):
         *,
         latent_vector: Optional[np.ndarray] = None,
         latent_size: Optional[int] = None,
-        use_tuple: bool = False,
+        use_tuple: bool = True, # Used to be set to False
     ):
         self.env = env
         if latent_vector is not None:
@@ -1170,9 +1171,9 @@ class BPDFeaturizeFn(object):
     def __call__(self, state: OvercookedState) -> Tuple[BPDObs, BPDObs]:
         if state.timestep == 0 and self.sample_per_episode:
             self.latent_vector = np.random.default_rng().normal(size=self.latent_size)
-        obs0, obs1 = self.env.lossless_state_encoding_mdp(state)
+        obs0, obs1, theta0, theta1 = self.env.lossless_state_encoding_mdp(state)
         if self.use_tuple:
-            return (obs0, self.latent_vector), (obs1, self.latent_vector)
+            return (obs0, theta0, self.latent_vector), (obs1, theta1, self.latent_vector)
         else:
             return (
                 append_latent_vector(obs0, self.latent_vector),
