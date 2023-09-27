@@ -446,7 +446,7 @@ class OvercookedEnv(object):
                 range_iterator.refresh()
 
         # Converting to numpy arrays
-        trajectories = {k: np.array(v) for k, v in trajectories.items()}
+        #trajectories = {k: np.array(v) for k, v in trajectories.items()}
 
         # Merging all metadata dictionaries, assumes same keys throughout all
         trajectories["metadatas"] = append_dictionaries(trajectories["metadatas"])
