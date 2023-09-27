@@ -145,6 +145,12 @@ class OvercookedPPOModel(TorchModelV2, nn.Module):
             return backbone_layers
 
         width, height, obs_channels = self._get_obs_space().shape
+        width = (width)//4 # The observations are split into three: obs, thetas, and t
+        height = (height)//4
+        
+        self.width = width
+        self.height = height
+
         if in_channels is None:
             in_channels = self._get_in_channels()
 
@@ -152,9 +158,10 @@ class OvercookedPPOModel(TorchModelV2, nn.Module):
         size_hidden_layers = int(scale * self.size_hidden_layers)
 
         obs_layers = conv_layers()
-        statistics_layers = conv_layers()
+        mu_layers = conv_layers() # for the mean
+        sigma_layers = conv_layers() # for the std
 
-        flattened_conv_size = 2*((width - 2) * (height - 2) * num_filters)
+        flattened_conv_size = 3*((width - 2) * (height - 2) * num_filters)
 
         linear_layers = []
         for fc_index in range(self.num_hidden_layers):
@@ -167,10 +174,16 @@ class OvercookedPPOModel(TorchModelV2, nn.Module):
                 )
             )
             linear_layers.append(nn.LeakyReLU())
+        
+        obs_seq = nn.Sequential(*obs_layers)
+        mu_seq = nn.Sequential(*mu_layers)
+        sigma_seq = nn.Sequential(*sigma_layers)
+        lin_seq = nn.Sequential(*linear_layers)
 
-        return {"obs": nn.Sequential(*obs_layers),
-                "stats": nn.Sequential(*statistics_layers),
-                "linear": nn.Sequential(*linear_layers)}
+        return {"obs": obs_seq,
+                "mu": mu_seq,
+                "sigma": sigma_seq,
+                "linear": lin_seq}
 
     def _construct_backbone(self) -> nn.Module:
         return self.construct_smirl_backbone()
@@ -190,18 +203,26 @@ class OvercookedPPOModel(TorchModelV2, nn.Module):
         else:
             return super().get_initial_state()
 
+    def backbone_forward(self, backbone, obs):
+        if next(backbone["obs"].parameters()).device != obs.device:
+            backbone["obs"].to(obs.device)
+            backbone["mu"].to(obs.device)
+            backbone["sigma"].to(obs.device)
+            backbone["linear"].to(obs.device)
+
+        obs_backbone = backbone["obs"](obs[..., :self.width, :self.height])
+        mus_backbone = backbone["mu"](obs[..., self.width:self.width*2, self.height:self.height*2])
+        sigmas_backbone = backbone["sigma"](obs[..., self.width*2:self.width*3, self.height*2:self.height*3])
+        backbone_out = backbone["linear"](torch.cat([obs_backbone, mus_backbone, sigmas_backbone, obs[:, 0:1, 0, 0]], axis=1))
+        return backbone_out
+
     def forward(self, input_dict, state, seq_lens):
-        import pdb; pdb.set_trace()
         self._obs = self._get_obs(input_dict)
         if self.vf_share_layers:
-            obs_backbone = self.backbone["obs"](self._obs)
-            thetas_backbone = self.backbone["stats"](self._obs)
-            self._backbone_out = self.backbone(torch.cat(obs_backbone, thetas_backbone))
+            self._backbone_out = self.backbone_forward(self.backbone, self._obs)
             logits = self.action_head(self._backbone_out)
         else:
-            obs_backbone = self.action_backbone["obs"](self._obs)
-            thetas_backbone = self.action_backbone["stats"](self._obs)
-            backbone_out = self.action_backbone(torch.cat(obs_backbone, thetas_backbone))
+            backbone_out = self.backbone_forward(self.action_backbone, self._obs)
             logits = self.action_head(backbone_out)
 
         self._logits = logits
@@ -219,7 +240,7 @@ class OvercookedPPOModel(TorchModelV2, nn.Module):
         if self.vf_share_layers:
             return self.value_head(self._backbone_out)[:, 0]
         else:
-            return self.value_head(self.value_backbone(self._obs))[:, 0]
+            return self.value_head(self.backbone_forward(self.value_backbone, self._obs))[:, 0]
 
 
 ModelCatalog.register_custom_model("overcooked_ppo_model", OvercookedPPOModel)
