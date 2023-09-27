@@ -37,6 +37,7 @@ if __name__ == "__main__":
     parser.add_argument("--experiment_tag", type=str, required=False)
     parser.add_argument("--human_model_checkpoint", type=str, required=False)
     parser.add_argument("--num_littered_objects", type=int, default=0)
+    parser.add_argument("--no_smirl", action="store_true")
     args = parser.parse_args()
 
     # Environment
@@ -59,7 +60,7 @@ if __name__ == "__main__":
     )
 
     # Training
-    num_workers = 1 # min(5, os.cpu_count() or 1)
+    num_workers = min(5, os.cpu_count() or 1)
     seed = args.seed
     num_gpus = 1 if torch.cuda.is_available() else 0
     num_gpus_per_worker = 0
@@ -156,7 +157,7 @@ if __name__ == "__main__":
         "mdp_params": {
             "layout_name": layout_name,
             "rew_shaping_params": rew_shaping_params,
-            "smirl": True
+            "smirl": not args.no_smirl
         },
         # To be passed into OvercookedEnv constructor
         "env_params": {
