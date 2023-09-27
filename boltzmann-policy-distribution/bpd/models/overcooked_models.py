@@ -35,7 +35,6 @@ class OvercookedPPOModel(TorchModelV2, nn.Module):
         )
         nn.Module.__init__(self)
 
-        import pdb; pdb.set_trace()
         custom_model_config = {
             **model_config.get("custom_model_config", {}),
             **kwargs,
@@ -195,10 +194,15 @@ class OvercookedPPOModel(TorchModelV2, nn.Module):
         import pdb; pdb.set_trace()
         self._obs = self._get_obs(input_dict)
         if self.vf_share_layers:
-            self._backbone_out = self.backbone(self._obs)
+            obs_backbone = self.backbone["obs"](self._obs)
+            thetas_backbone = self.backbone["stats"](self._obs)
+            self._backbone_out = self.backbone(torch.cat(obs_backbone, thetas_backbone))
             logits = self.action_head(self._backbone_out)
         else:
-            logits = self.action_head(self.action_backbone(self._obs))
+            obs_backbone = self.action_backbone["obs"](self._obs)
+            thetas_backbone = self.action_backbone["stats"](self._obs)
+            backbone_out = self.action_backbone(torch.cat(obs_backbone, thetas_backbone))
+            logits = self.action_head(backbone_out)
 
         self._logits = logits
 

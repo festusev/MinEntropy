@@ -1070,6 +1070,8 @@ class OvercookedGridworld(object):
     # Gets the sufficient statistics (theta, t) for SMIRL
     # theta is the parameters of the distribution for each feature, t is the number of states seen so far
     def sufficient_statistics(self):
+        if len(self.state_vecs) == 0: # We are at the start
+            return [np.zeros(26, 5, 5), np.ones(26, 5, 5)]
         mu = np.mean(self.state_vecs, axis=0)
         std = np.std(self.state_vecs, axis=0)
         t = len(self.state_vecs)
@@ -1983,9 +1985,8 @@ class OvercookedGridworld(object):
 
         # NOTE: Currently not very efficient, a decent amount of computation repeated here
         num_players = len(overcooked_state.players)
-        final_obs_for_players = tuple(process_for_player(i) for i in range(num_players))
-        thetas = self.sufficient_statistics()
-        return final_obs_for_players + thetas
+        final_obs_for_players = tuple(np.concatenate(process_for_player(i) for i in range(num_players)))
+        return final_obs_for_players
 
     @property
     def featurize_state_shape(self):
