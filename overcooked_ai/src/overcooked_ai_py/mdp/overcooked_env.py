@@ -371,8 +371,9 @@ class OvercookedEnv(object):
             a_t, a_info_t = zip(*joint_action_and_infos)
             assert all(a in Action.ALL_ACTIONS for a in a_t)
             assert all(type(a_info) is dict for a_info in a_info_t)
-
-            s_tp1, r_t, done, info = self.step(a_t, a_info_t, display_phi)
+           
+            _output = self.step(a_t, a_info_t, display_phi)
+            s_tp1, r_t, done, info = _output[0], _output[1], _output[2], _output[-1]
             trajectory.append((s_t, a_t, r_t, done, info))
 
             if display and self.state.timestep < display_until:
@@ -386,6 +387,9 @@ class OvercookedEnv(object):
 
         total_sparse = sum(self.game_stats["cumulative_sparse_rewards_by_agent"])
         total_shaped = sum(self.game_stats["cumulative_shaped_rewards_by_agent"])
+        
+        import pdb; pdb.set_trace()
+
         return np.array(trajectory), self.state.timestep, total_sparse, total_shaped
 
     def get_rollouts(self, agent_pair, num_games, display=False, dir=None, final_state=False, display_phi=False,

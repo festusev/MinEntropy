@@ -1072,7 +1072,7 @@ class OvercookedGridworld(object):
     # theta is the parameters of the distribution for each feature, t is the number of states seen so far
     def sufficient_statistics(self):
         if len(self.state_vecs) == 0: # We are at the start
-            return [np.zeros((2, 5, 5, 26)), np.ones((2, 5, 5, 26)), 0]
+            return [np.zeros((2, self.width, self.height, 26)), np.ones((2, self.width, self.height, 26)), 0]
         mu = np.mean(self.state_vecs, axis=0)
         std = np.std(self.state_vecs, axis=0)
         t = len(self.state_vecs)
