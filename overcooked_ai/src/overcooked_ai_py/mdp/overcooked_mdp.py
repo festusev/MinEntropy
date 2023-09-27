@@ -1,5 +1,6 @@
 import itertools, copy
 import numpy as np
+from scipy.stats import norm
 from functools import reduce
 from collections import defaultdict, Counter
 from overcooked_ai_py.utils import pos_distance, read_layout_dict, classproperty
@@ -1071,11 +1072,11 @@ class OvercookedGridworld(object):
     # theta is the parameters of the distribution for each feature, t is the number of states seen so far
     def sufficient_statistics(self):
         if len(self.state_vecs) == 0: # We are at the start
-            return [np.zeros(26, 5, 5), np.ones(26, 5, 5)]
+            return [np.zeros((2, 5, 5, 26)), np.ones((2, 5, 5, 26)), 0]
         mu = np.mean(self.state_vecs, axis=0)
         std = np.std(self.state_vecs, axis=0)
         t = len(self.state_vecs)
-        return [mu, std], t
+        return [mu, std, t]
 
     @property
     def sufficient_statistics_size(self):
@@ -1108,7 +1109,7 @@ class OvercookedGridworld(object):
             sparse_reward_by_agent = [0, 0]
             shaped_reward_by_agent = [0, 0]
 
-            new_state_vec = self.lossless_state_encoding(new_state)
+            new_state_vec = np.array(self.lossless_state_encoding(new_state))[:, :self.width, :self.height]
             if len(self.state_vecs) > 0:
                 std_constant = 0.01
                 prob_st = norm.pdf((new_state_vec - np.mean(self.state_vecs, axis=0))/(np.std(self.state_vecs,axis=0) + std_constant))
@@ -1983,9 +1984,16 @@ class OvercookedGridworld(object):
             # NOTE: currently not including time left or order_list in featurization
             return np.array(state_mask_stack).astype(int)
 
+        thetas = self.sufficient_statistics()
         # NOTE: Currently not very efficient, a decent amount of computation repeated here
         num_players = len(overcooked_state.players)
-        final_obs_for_players = tuple(np.concatenate(process_for_player(i) for i in range(num_players)))
+        
+        final_obs_for_players = [process_for_player(i) for i in range(num_players)]
+        for i in range(num_players):
+            final_obs_for_players[i] = np.tile(final_obs_for_players[i], (4, 4, 1))
+            final_obs_for_players[i][self.width:self.width*2, self.height:self.height*2] = thetas[0][i]
+            final_obs_for_players[i][self.width*2:self.width*3, self.height*2:self.height*3] = thetas[1][i]
+            final_obs_for_players[i][self.width*3:, self.height*3:] = np.ones((self.width, self.height, final_obs_for_players[i].shape[-1]))*thetas[2]
         return final_obs_for_players
 
     @property
