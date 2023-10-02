@@ -150,7 +150,7 @@ if __name__ == "__main__":
         experiment_name_parts.append(experiment_tag)
     experiment_name = os.path.join(*experiment_name_parts)  # noqa: F841
     checkpoint_path = None  # noqa: F841
-
+    print("SmirL:", not args.no_smirl)
     env_id = "overcooked_multi_agent"
     env_config = {
         # To be passed into OvercookedGridWorld constructor
