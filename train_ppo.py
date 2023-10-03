@@ -60,7 +60,7 @@ if __name__ == "__main__":
     )
 
     # Training
-    num_workers = 1 #min(5, os.cpu_count() or 1)
+    num_workers = min(5, os.cpu_count() or 1)
     seed = args.seed
     num_gpus = 1 if torch.cuda.is_available() else 0
     num_gpus_per_worker = 0

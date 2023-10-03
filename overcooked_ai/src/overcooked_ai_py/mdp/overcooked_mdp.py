@@ -1,6 +1,6 @@
 import itertools, copy
 import numpy as np
-from scipy.stats import norm
+import scipy.stats as sst
 from functools import reduce
 from collections import defaultdict, Counter
 from overcooked_ai_py.utils import pos_distance, read_layout_dict, classproperty
@@ -1064,9 +1064,11 @@ class OvercookedGridworld(object):
         return False
 
     def reset_state_vecs(self):
-        # SMIRL
-        self.state_vecs = []
-
+        # SMIRL with beta distribution
+        a = 1
+        b = 1
+        self.state_vecs = [np.zeros((self.width, self.height, 26)) for _ in range(a)]
+        self.state_vecs += [np.ones((self.width, self.height, 26)) for _ in range(b)]
 
     # Gets the sufficient statistics (theta, t) for SMIRL
     # theta is the parameters of the distribution for each feature, t is the number of states seen so far
@@ -1076,6 +1078,7 @@ class OvercookedGridworld(object):
         mu = np.mean(self.state_vecs, axis=0)
         std = np.std(self.state_vecs, axis=0)
         t = len(self.state_vecs)
+        
         return [mu, std, t]
 
     @property
@@ -1112,11 +1115,20 @@ class OvercookedGridworld(object):
 
             if len(self.state_vecs) > 0:
                 std_constant = 0.01
-                prob_st = norm.pdf((new_state_vec - np.mean(self.state_vecs, axis=0))/(np.std(self.state_vecs,axis=0) + std_constant))
+
+                thetas = self.sufficient_statistics()
+                prob_st = sst.bernoulli.pmf(new_state_vec[0, :, :, :26], thetas[0])
+
+                # Delete the "soup cook time remaining" observation for now because it is not categorical
+                prob_st = np.delete(prob_st, (16, 17, 18, 19, 20), axis=2)
+
+                #prob_st = sst.norm.pdf((new_state_vec - np.mean(self.state_vecs, axis=0))/(np.std(self.state_vecs,axis=0) + std_constant))
                 prob_st = np.clip(prob_st, 0.05, 0.95) # clip it
+                
                 sparse_reward_by_agent = [np.log(prob_st).sum(), np.log(prob_st).sum()]
                 sparse_reward_by_agent = np.int32(np.round(sparse_reward_by_agent)).tolist() # Convert to int32
-        self.state_vecs.append(new_state_vec)
+                shaped_reward_by_agent = sparse_reward_by_agent
+        self.state_vecs.append(new_state_vec[0, :, :, :26])
 
         assert new_state.player_positions == state.player_positions
         assert new_state.player_orientations == state.player_orientations
@@ -1990,10 +2002,9 @@ class OvercookedGridworld(object):
         
         final_obs_for_players = [process_for_player(i) for i in range(num_players)]
         for i in range(num_players):
-            final_obs_for_players[i] = np.tile(final_obs_for_players[i], (4, 4, 1))
-            final_obs_for_players[i][self.width:self.width*2, self.height:self.height*2] = thetas[0][i]
-            final_obs_for_players[i][self.width*2:self.width*3, self.height*2:self.height*3] = thetas[1][i]
-            final_obs_for_players[i][self.width*3:, self.height*3:] = np.ones((self.width, self.height, final_obs_for_players[i].shape[-1]))*thetas[2]
+            final_obs_for_players[i] = np.tile(final_obs_for_players[i], (1, 1, 2))
+            final_obs_for_players[i][:, :, 26:] = thetas[0][i]
+            #final_obs_for_players[i] = np.concatenate([final_obs_for_players[i], thetas[2]*np.ones((1, self.height, final_obs_for_players[i].shape[-1]))])
         return final_obs_for_players
 
     @property

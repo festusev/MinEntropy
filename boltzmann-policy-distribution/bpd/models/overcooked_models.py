@@ -145,8 +145,7 @@ class OvercookedPPOModel(TorchModelV2, nn.Module):
             return backbone_layers
 
         width, height, obs_channels = self._get_obs_space().shape
-        width = (width)//4 # The observations are split into three: obs, thetas, and t
-        height = (height)//4
+        # width = (width-1)//3 # The observations are split into three: obs, thetas, and t
 
         self.width = width
         self.height = height
@@ -177,7 +176,7 @@ class OvercookedPPOModel(TorchModelV2, nn.Module):
         return layers_seq
 
     def _construct_backbone(self) -> nn.Module:
-        return self.construct_smirl_backbone()
+        return self.construct_default_backbone()
 
     def _get_obs(self, input_dict):
         obs = (
@@ -198,14 +197,9 @@ class OvercookedPPOModel(TorchModelV2, nn.Module):
         if next(backbone.parameters()).device != obs.device:
             backbone.to(obs.device)
 
-        obs_backbone = backbone["obs"](obs[..., :self.width, :self.height])
-        mus_backbone = backbone["mu"](obs[..., self.width:self.width*2, self.height:self.height*2])
-        sigmas_backbone = backbone["sigma"](obs[..., self.width*2:self.width*3, self.height*2:self.height*3])
-        backbone_out = backbone["linear"](torch.cat([obs_backbone, mus_backbone, sigmas_backbone, obs[:, 0:1, 0, 0]], axis=1))
-        return backbone_out
+        return backbone(obs)
 
     def forward(self, input_dict, state, seq_lens):
-        import pdb; pdb.set_trace()
         self._obs = self._get_obs(input_dict)
         if self.vf_share_layers:
             self._backbone_out = self.backbone_forward(self.backbone, self._obs)
