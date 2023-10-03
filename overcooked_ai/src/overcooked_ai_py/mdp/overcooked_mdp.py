@@ -1067,23 +1067,39 @@ class OvercookedGridworld(object):
         # SMIRL with beta distribution
         a = 1
         b = 1
-        self.state_vecs = [np.zeros((self.width, self.height, 26)) for _ in range(a)]
-        self.state_vecs += [np.ones((self.width, self.height, 26)) for _ in range(b)]
+        self.state_vecs = [np.zeros((self.width, self.height, 53)) for _ in range(a)]
+        self.state_vecs += [np.ones((self.width, self.height, 53)) for _ in range(b)]
+
+    def onehot_obs(self, obs):
+        Ks = [2]*16 + [4]*4 + [21] + [2]*5 
+        
+        onehot = []
+        for i in range(len(Ks)):
+            feat = obs[..., i]
+            hot = np.eye(Ks[i])
+            hot = hot[feat.astype(int)][..., 1:] # We don't need the case where the value is 0
+            onehot.append(hot)
+       
+        onehot = np.concatenate(onehot, axis=-1) 
+        return onehot
+
 
     # Gets the sufficient statistics (theta, t) for SMIRL
     # theta is the parameters of the distribution for each feature, t is the number of states seen so far
     def sufficient_statistics(self):
         if len(self.state_vecs) == 0: # We are at the start
-            return [np.zeros((2, self.width, self.height, 26)), np.ones((2, self.width, self.height, 26)), 0]
-        mu = np.mean(self.state_vecs, axis=0)
-        std = np.std(self.state_vecs, axis=0)
+            return [np.zeros((2, self.width, self.height, 53)), 0]
+        
+        state_vecs = np.array(self.state_vecs)
+
+        mu = np.mean(state_vecs, axis=0)
         t = len(self.state_vecs)
         
-        return [mu, std, t]
+        return [mu, t]
 
     @property
     def sufficient_statistics_size(self):
-        return 26 # There are 26 features. We have the mean and std of each. Plus 1 which stores the number of states seen
+        return 53 
 
     def get_state_transition(self, state, joint_action, display_phi=False, motion_planner=None):
         """Gets information about possible transitions for the action.
@@ -1109,6 +1125,7 @@ class OvercookedGridworld(object):
 
         # SMIRL modification
         new_state_vec = np.array(self.lossless_state_encoding(new_state))[:, :self.width, :self.height]
+        onehot_obs = self.onehot_obs(new_state_vec[0, :, :, :26])
         if self.smirl:
             sparse_reward_by_agent = [0, 0]
             shaped_reward_by_agent = [0, 0]
@@ -1117,18 +1134,14 @@ class OvercookedGridworld(object):
                 std_constant = 0.01
 
                 thetas = self.sufficient_statistics()
-                prob_st = sst.bernoulli.pmf(new_state_vec[0, :, :, :26], thetas[0])
+                prob_st = sst.bernoulli.pmf(onehot_obs, thetas[0])
 
-                # Delete the "soup cook time remaining" observation for now because it is not categorical
-                prob_st = np.delete(prob_st, (16, 17, 18, 19, 20), axis=2)
-
-                #prob_st = sst.norm.pdf((new_state_vec - np.mean(self.state_vecs, axis=0))/(np.std(self.state_vecs,axis=0) + std_constant))
                 prob_st = np.clip(prob_st, 0.05, 0.95) # clip it
                 
                 sparse_reward_by_agent = [np.log(prob_st).sum(), np.log(prob_st).sum()]
                 sparse_reward_by_agent = np.int32(np.round(sparse_reward_by_agent)).tolist() # Convert to int32
                 shaped_reward_by_agent = sparse_reward_by_agent
-        self.state_vecs.append(new_state_vec[0, :, :, :26])
+        self.state_vecs.append(onehot_obs)
 
         assert new_state.player_positions == state.player_positions
         assert new_state.player_orientations == state.player_orientations
@@ -2002,8 +2015,7 @@ class OvercookedGridworld(object):
         
         final_obs_for_players = [process_for_player(i) for i in range(num_players)]
         for i in range(num_players):
-            final_obs_for_players[i] = np.tile(final_obs_for_players[i], (1, 1, 2))
-            final_obs_for_players[i][:, :, 26:] = thetas[0][i]
+            final_obs_for_players[i] = np.concatenate([final_obs_for_players[i], thetas[0]], axis=-1)
             #final_obs_for_players[i] = np.concatenate([final_obs_for_players[i], thetas[2]*np.ones((1, self.height, final_obs_for_players[i].shape[-1]))])
         return final_obs_for_players
 
