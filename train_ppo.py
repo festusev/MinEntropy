@@ -120,7 +120,8 @@ if __name__ == "__main__":
     reward_shaping_horizon = num_training_iters * train_batch_size // 2
     # Whether the agents should both get all dense rewards.
     share_dense_reward = False
-
+    
+    import pdb; pdb.set_trace()
     checkpoint_to_load_policies = args.human_model_checkpoint
     if checkpoint_to_load_policies is not None:
         checkpoint_to_load_policies_config: TrainerConfigDict = load_trainer_config(
