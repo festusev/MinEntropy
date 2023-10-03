@@ -1083,7 +1083,7 @@ class OvercookedGridworld(object):
 
     @property
     def sufficient_statistics_size(self):
-        return 26*2 + 1 # There are 26 features. We have the mean and std of each. Plus 1 which stores the number of states seen
+        return 26 # There are 26 features. We have the mean and std of each. Plus 1 which stores the number of states seen
 
     def get_state_transition(self, state, joint_action, display_phi=False, motion_planner=None):
         """Gets information about possible transitions for the action.
