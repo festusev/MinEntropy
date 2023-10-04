@@ -47,7 +47,7 @@ class OvercookedPPOModel(TorchModelV2, nn.Module):
         self.num_outputs = num_outputs
         if self.num_outputs is None:
             self.num_outputs = self.size_hidden_layers
-
+        self.smirl = custom_model_config.get("smirl")
         self.vf_share_layers: bool = model_config["vf_share_layers"]
         if self.vf_share_layers:
             self.backbone = self._construct_backbone()
@@ -73,11 +73,13 @@ class OvercookedPPOModel(TorchModelV2, nn.Module):
     def _get_in_channels(self) -> int:
         return cast(int, self._get_obs_space().shape[-1])
 
-    def construct_default_backbone(self, *, scale=1, in_channels=None) -> nn.Sequential:
+    def construct_default_backbone(self, *, scale=1, in_channels=None, override_channels=None) -> nn.Sequential:
         width, height, obs_channels = self._get_obs_space().shape
         if in_channels is None:
             in_channels = self._get_in_channels()
 
+        if override_channels is not None:
+            obs_channels = in_channels = override_channels
         num_filters = int(scale * self.num_filters)
         size_hidden_layers = int(scale * self.size_hidden_layers)
 
@@ -117,66 +119,11 @@ class OvercookedPPOModel(TorchModelV2, nn.Module):
 
         return nn.Sequential(*backbone_layers)
 
-    def construct_smirl_backbone(self, *, scale=1, in_channels=None) -> nn.Sequential:
-        # A backbone based on the observation, the sufficient statistics, and an extra scalar that is the current timestep
-        def conv_layers():
-            # We use two conv stacks: one for the observation and one for the sufficient statistics
-            backbone_layers: List[nn.Module] = []
-            for conv_index in range(self.num_conv_layers):
-                if conv_index == 0:
-                    padding = (2, 2)
-                elif conv_index < self.num_conv_layers - 1:
-                    padding = (1, 1)
-                else:
-                    padding = (0, 0)
-
-                backbone_layers.append(
-                    nn.Conv2d(
-                        in_channels=in_channels if conv_index == 0 else num_filters,
-                        out_channels=num_filters,
-                        kernel_size=(5, 5) if conv_index == 0 else (3, 3),
-                        padding=padding,
-                        stride=(1, 1),
-                    )
-                )
-                backbone_layers.append(nn.LeakyReLU())
-
-            backbone_layers.append(nn.Flatten())
-            return backbone_layers
-
-        width, height, obs_channels = self._get_obs_space().shape
-        # width = (width-1)//3 # The observations are split into three: obs, thetas, and t
-
-        self.width = width
-        self.height = height
-
-        if in_channels is None:
-            in_channels = self._get_in_channels()
-
-        num_filters = int(scale * self.num_filters)
-        size_hidden_layers = int(scale * self.size_hidden_layers)
-
-        layers = conv_layers()
-
-        flattened_conv_size = (width - 2) * (height - 2) * num_filters
-
-        for fc_index in range(self.num_hidden_layers):
-            layers.append(
-                nn.Linear(
-                    in_features=flattened_conv_size + 1
-                    if fc_index == 0
-                    else size_hidden_layers,
-                    out_features=size_hidden_layers,
-                )
-            )
-            layers.append(nn.LeakyReLU())
-
-        layers_seq = nn.Sequential(*layers)
-
-        return layers_seq
-
     def _construct_backbone(self) -> nn.Module:
-        return self.construct_default_backbone()
+        if self.smirl:
+            return self.construct_default_backbone()
+        else:
+            return self.construct_default_backbone(override_channels=26)
 
     def _get_obs(self, input_dict):
         obs = (
@@ -196,7 +143,8 @@ class OvercookedPPOModel(TorchModelV2, nn.Module):
     def backbone_forward(self, backbone, obs):
         if next(backbone.parameters()).device != obs.device:
             backbone.to(obs.device)
-
+        if not self.smirl:
+            obs = obs[:, :26, ...]
         return backbone(obs)
 
     def forward(self, input_dict, state, seq_lens):
