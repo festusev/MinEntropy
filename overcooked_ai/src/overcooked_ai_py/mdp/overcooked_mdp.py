@@ -1119,13 +1119,14 @@ class OvercookedGridworld(object):
                 raise ValueError("Illegal action %s in state %s" % (action, state))
         
         new_state = state.deepcopy()
-
+        
         # Resolve interacts first
         sparse_reward_by_agent, shaped_reward_by_agent = self.resolve_interacts(new_state, joint_action, events_infos)
 
         # SMIRL modification
         new_state_vec = np.array(self.lossless_state_encoding(new_state))[:, :self.width, :self.height]
         onehot_obs = self.onehot_obs(new_state_vec[0, :, :, :26])
+        
         if self.smirl:
             sparse_reward_by_agent = [0, 0]
             shaped_reward_by_agent = [0, 0]
@@ -1141,6 +1142,7 @@ class OvercookedGridworld(object):
                 sparse_reward_by_agent = [np.log(prob_st).sum(), np.log(prob_st).sum()]
                 sparse_reward_by_agent = np.int32(np.round(sparse_reward_by_agent)).tolist() # Convert to int32
                 shaped_reward_by_agent = sparse_reward_by_agent
+
         self.state_vecs.append(onehot_obs)
 
         assert new_state.player_positions == state.player_positions
@@ -1151,14 +1153,13 @@ class OvercookedGridworld(object):
 
         # Finally, environment effects
         self.step_environment_effects(new_state)
-
-        # Additional dense reward logic
-        # shaped_reward += self.calculate_distance_based_shaped_reward(state, new_state)
+        
         infos = {
             "event_infos": events_infos,
             "sparse_reward_by_agent": sparse_reward_by_agent,
             "shaped_reward_by_agent": shaped_reward_by_agent,
         }
+        
         if display_phi:
             assert motion_planner is not None, "motion planner must be defined if display_phi is true"
             infos["phi_s"] = self.potential_function(state, motion_planner)

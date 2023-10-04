@@ -87,6 +87,7 @@ if __name__ == "__main__":
         required=False,
         help="if specified, render the games to this path",
     )
+    parser.add_argument("--no_smirl", action="store_true")
     args = parser.parse_args()
 
     ray.init(
@@ -136,7 +137,7 @@ if __name__ == "__main__":
     mdp_params = {
         "layout_name": layout_name,
         "rew_shaping_params": rew_shaping_params,
-        "smirl": True
+        "smirl": not args.no_smirl
     }
     eval_params = {
         "ep_length": horizon,

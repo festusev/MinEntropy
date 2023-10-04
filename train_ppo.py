@@ -98,6 +98,7 @@ if __name__ == "__main__":
         "num_filters": num_filters,
         "num_conv_layers": num_conv_layers,
         "split_backbone": split_backbone,
+        "smirl": not args.no_smirl
     }
     custom_model = "overcooked_ppo_model"
 
@@ -121,7 +122,6 @@ if __name__ == "__main__":
     # Whether the agents should both get all dense rewards.
     share_dense_reward = False
     
-    import pdb; pdb.set_trace()
     checkpoint_to_load_policies = args.human_model_checkpoint
     if checkpoint_to_load_policies is not None:
         checkpoint_to_load_policies_config: TrainerConfigDict = load_trainer_config(
