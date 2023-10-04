@@ -38,6 +38,7 @@ if __name__ == "__main__":
     parser.add_argument("--human_model_checkpoint", type=str, required=False)
     parser.add_argument("--num_littered_objects", type=int, default=0)
     parser.add_argument("--no_smirl", action="store_true")
+    parser.add_argument("--train_both", action="store_true")
     args = parser.parse_args()
 
     # Environment
@@ -60,7 +61,7 @@ if __name__ == "__main__":
     )
 
     # Training
-    num_workers = min(5, os.cpu_count() or 1)
+    num_workers = 1 #min(5, os.cpu_count() or 1)
     seed = args.seed
     num_gpus = 1 if torch.cuda.is_available() else 0
     num_gpus_per_worker = 0
@@ -134,7 +135,7 @@ if __name__ == "__main__":
     )
     policy_ids: List[str]
     policy_mapping_fn: Callable[..., str]
-    if multiagent_mode == "self_play" or checkpoint_to_load_policies is not None:
+    if multiagent_mode == "self_play" or (not args.train_both) and checkpoint_to_load_policies is not None:
         policy_ids = ["ppo"]
         policy_mapping_fn = lambda agent_id, *args, **kwargs: "ppo"
     elif multiagent_mode == "cross_play":
@@ -267,6 +268,7 @@ if __name__ == "__main__":
                 if agent_id.startswith("bc")
                 else "ppo"
             )
+    
 
     config: TrainerConfigDict = {  # noqa: F841
         "env": env_id,
@@ -298,7 +300,7 @@ if __name__ == "__main__":
         ],
         "framework": "torch",
     }
-
+    import pdb; pdb.set_trace()
     if "disable_env_checking" in COMMON_CONFIG:
         config["disable_env_checking"] = True
 
