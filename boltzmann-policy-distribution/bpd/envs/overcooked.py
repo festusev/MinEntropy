@@ -297,7 +297,7 @@ class OvercookedMultiAgent(MultiAgentEnv):
     bc_observation_space: spaces.Box
 
     # List of all agent types currently supported
-    supported_agents = ["ppo", "bc"]
+    supported_agents = ["ppo", "bc", "smirl"]
 
     # Default bc_schedule, includes no bc agent at any time
     bc_schedule = self_play_bc_schedule = [(0, 0), (float("inf"), 0)]
@@ -326,6 +326,7 @@ class OvercookedMultiAgent(MultiAgentEnv):
         base_env: OvercookedEnv,
         reward_shaping_factor=0.0,
         reward_shaping_horizon=0,
+        agents=["ppo", "ppo"],
         bc_schedule=None,
         share_dense_reward=False,
         extra_rew_shaping=DEFAULT_CONFIG["multi_agent_params"]["extra_rew_shaping"],
@@ -355,8 +356,10 @@ class OvercookedMultiAgent(MultiAgentEnv):
         # since we are not passing featurize_fn in as an argument, we create it here and check its validity
         self.featurize_fn_map = {
             "ppo": lambda state: self.base_env.lossless_state_encoding_mdp(state),
+            "smirl": lambda state: self.base_env.lossless_state_encoding_mdp(state),
             "bc": lambda state: self.base_env.featurize_state_mdp(state),
         }
+        self.agents = agents
         self._validate_featurize_fns(self.featurize_fn_map)
         self._initial_reward_shaping_factor = reward_shaping_factor
         self.reward_shaping_factor = reward_shaping_factor
@@ -373,7 +376,7 @@ class OvercookedMultiAgent(MultiAgentEnv):
         self.reset(regen_mdp=True)
 
     def _validate_featurize_fns(self, mapping):
-        assert "ppo" in mapping, "At least one ppo agent must be specified"
+        assert "ppo" in mapping or "smirl" in mapping, "At least one ppo agent must be specified"
         for k, v in mapping.items():
             assert (
                 k in self.supported_agents
@@ -429,6 +432,8 @@ class OvercookedMultiAgent(MultiAgentEnv):
     def _get_featurize_fn(self, agent_id):
         if agent_id.startswith("ppo"):
             return lambda state: self.base_env.lossless_state_encoding_mdp(state)
+        if agent_id.startswith("smirl"):
+            return lambda state: self.base_env.lossless_state_encoding_mdp(state)
         if agent_id.startswith("bc"):
             return lambda state: self.base_env.featurize_state_mdp(state)
         raise ValueError("Unsupported agent type {0}".format(agent_id))
@@ -440,6 +445,10 @@ class OvercookedMultiAgent(MultiAgentEnv):
         return ob_p0, ob_p1
 
     def _populate_agents(self):
+        if "smirl" in self.agents:
+            agents = [self.agents[0] + "_0", self.agents[1] + "_1"]
+            return np.random.shuffle(agents)
+
         # Always include at least one ppo agent (i.e. bc_sp not supported for simplicity)
         agents = ["ppo"]
 
@@ -489,13 +498,13 @@ class OvercookedMultiAgent(MultiAgentEnv):
         next_state: OvercookedState
         dense_reward: List[float]
         if self.use_phi:
-            next_state, sparse_reward, done, info = self.base_env.step(
+            next_state, sparse_reward, smirl_reward, done, info = self.base_env.step(
                 joint_action, display_phi=True
             )
             potential = info["phi_s_prime"] - info["phi_s"]
             dense_reward = [potential, potential]
         else:
-            next_state, sparse_reward, done, info = self.base_env.step(
+            next_state, sparse_reward, smirl_reward, done, info = self.base_env.step(
                 joint_action, display_phi=False
             )
             dense_reward = info["shaped_r_by_agent"]
@@ -553,6 +562,10 @@ class OvercookedMultiAgent(MultiAgentEnv):
                 shaped_reward[agent_index] = 0.0
             agent_action = Action.ACTION_TO_INDEX[joint_action[agent_index]]
             shaped_reward[agent_index] += self.action_rewards[agent_action]
+
+        for agent_index in range(2):
+            if "smirl" in self.curr_agents[agent_index]:
+                shaped_reward[agent_index] = smirl_reward
 
         obs = {self.curr_agents[0]: ob_p0, self.curr_agents[1]: ob_p1}
         rewards = {

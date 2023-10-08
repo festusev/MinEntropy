@@ -37,8 +37,10 @@ if __name__ == "__main__":
     parser.add_argument("--experiment_tag", type=str, required=False)
     parser.add_argument("--human_model_checkpoint", type=str, required=False)
     parser.add_argument("--num_littered_objects", type=int, default=0)
-    parser.add_argument("--no_smirl", action="store_true")
-    parser.add_argument("--train_both", action="store_true")
+    # parser.add_argument("--smirl", action="store_true")
+    parser.add_argument("--model_0", type=str, required=True) # "ppo", "smirl", "bc", or a model checkpoint
+    parser.add_argument("--model_1", type=str, required=True)
+    parser.add_argument("--train_1", action="store_true") # We always train model 0, but this is if we want to train model 1
     args = parser.parse_args()
 
     # Environment
@@ -98,8 +100,7 @@ if __name__ == "__main__":
         "size_hidden_layers": size_hidden_layers,
         "num_filters": num_filters,
         "num_conv_layers": num_conv_layers,
-        "split_backbone": split_backbone,
-        "smirl": not args.no_smirl
+        "split_backbone": split_backbone
     }
     custom_model = "overcooked_ppo_model"
 
@@ -122,7 +123,7 @@ if __name__ == "__main__":
     reward_shaping_horizon = num_training_iters * train_batch_size // 2
     # Whether the agents should both get all dense rewards.
     share_dense_reward = False
-    
+
     checkpoint_to_load_policies = args.human_model_checkpoint
     if checkpoint_to_load_policies is not None:
         checkpoint_to_load_policies_config: TrainerConfigDict = load_trainer_config(
@@ -143,6 +144,7 @@ if __name__ == "__main__":
         policy_mapping_fn = lambda agent_id, *args, **kwargs: cast(str, agent_id)
     policies_to_train = policy_ids
 
+    ############################
     # Logging
     save_freq = 25  # noqa: F841
     log_dir = args.log_dir
@@ -152,14 +154,16 @@ if __name__ == "__main__":
         experiment_name_parts.append(experiment_tag)
     experiment_name = os.path.join(*experiment_name_parts)  # noqa: F841
     checkpoint_path = None  # noqa: F841
-    print("SmirL:", not args.no_smirl)
+    ###############################
+
+    print("SmirL:", args.smirl)
     env_id = "overcooked_multi_agent"
     env_config = {
         # To be passed into OvercookedGridWorld constructor
         "mdp_params": {
             "layout_name": layout_name,
             "rew_shaping_params": rew_shaping_params,
-            "smirl": not args.no_smirl
+            "smirl": args.smirl
         },
         # To be passed into OvercookedEnv constructor
         "env_params": {
@@ -169,6 +173,7 @@ if __name__ == "__main__":
         },
         # To be passed into OvercookedMultiAgent constructor
         "multi_agent_params": {
+            "agents": ["smirl", "ppo"]
             "reward_shaping_factor": reward_shaping_factor,
             "reward_shaping_horizon": reward_shaping_horizon,
             "use_phi": use_phi,
@@ -235,11 +240,14 @@ if __name__ == "__main__":
                 loaded_policy_action_space,
                 loaded_policy_config,
             )
+
+            #################
             policy_mapping_fn = (
                 lambda agent_id, *args, loaded_policy_id=loaded_policy_id, **kwargs: "ppo"
                 if agent_id == "ppo_0"
                 else loaded_policy_id
             )
+            ##################
 
             checkpoint_env_config = checkpoint_to_load_policies_config["env_config"]
         else:

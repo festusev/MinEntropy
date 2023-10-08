@@ -1126,22 +1126,17 @@ class OvercookedGridworld(object):
         # SMIRL modification
         new_state_vec = np.array(self.lossless_state_encoding(new_state))[:, :self.width, :self.height]
         onehot_obs = self.onehot_obs(new_state_vec[0, :, :, :26])
-        
-        if self.smirl:
-            sparse_reward_by_agent = [0, 0]
-            shaped_reward_by_agent = [0, 0]
 
-            if len(self.state_vecs) > 0:
-                std_constant = 0.01
+        smirl_reward = 0
+        if len(self.state_vecs) > 0:
+            std_constant = 0.01
 
-                thetas = self.sufficient_statistics()
-                prob_st = sst.bernoulli.pmf(onehot_obs, thetas[0])
+            thetas = self.sufficient_statistics()
+            prob_st = sst.bernoulli.pmf(onehot_obs, thetas[0])
 
-                prob_st = np.clip(prob_st, 0.05, 0.95) # clip it
-                
-                sparse_reward_by_agent = [np.log(prob_st).sum(), np.log(prob_st).sum()]
-                sparse_reward_by_agent = np.int32(np.round(sparse_reward_by_agent)).tolist() # Convert to int32
-                shaped_reward_by_agent = sparse_reward_by_agent
+            prob_st = np.clip(prob_st, 0.05, 0.95) # clip it
+
+            smirl_reward = np.int32(np.round(np.log(prob_st).sum()))
 
         self.state_vecs.append(onehot_obs)
 
@@ -1158,6 +1153,7 @@ class OvercookedGridworld(object):
             "event_infos": events_infos,
             "sparse_reward_by_agent": sparse_reward_by_agent,
             "shaped_reward_by_agent": shaped_reward_by_agent,
+            "smirl_reward": smirl_reward
         }
         
         if display_phi:
