@@ -446,7 +446,9 @@ class OvercookedMultiAgent(MultiAgentEnv):
 
     def _populate_agents(self):
         if len(self.agents) > 1:
-            return np.random.shuffle(self.agents)
+            agents = self.agents.copy()
+            np.random.shuffle(self.agents)
+            return agents
         
         # Always include at least one ppo agent (i.e. bc_sp not supported for simplicity)
         agents = ["ppo"]
@@ -562,7 +564,6 @@ class OvercookedMultiAgent(MultiAgentEnv):
             agent_action = Action.ACTION_TO_INDEX[joint_action[agent_index]]
             shaped_reward[agent_index] += self.action_rewards[agent_action]
 
-        import pdb; pdb.set_trace()
         for agent_index in range(2):
             if "smirl" in self.curr_agents[agent_index]:
                 shaped_reward[agent_index] = smirl_reward
@@ -593,7 +594,6 @@ class OvercookedMultiAgent(MultiAgentEnv):
 
         if regen_mdp is None:
             regen_mdp = self.regen_mdp
-
         self.base_env.reset(regen_mdp)
         self.curr_agents = self._populate_agents()
         ob_p0, ob_p1 = self._get_obs(self.base_env.state)
