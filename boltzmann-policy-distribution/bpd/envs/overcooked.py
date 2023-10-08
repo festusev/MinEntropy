@@ -445,10 +445,9 @@ class OvercookedMultiAgent(MultiAgentEnv):
         return ob_p0, ob_p1
 
     def _populate_agents(self):
-        if "smirl" in self.agents:
-            agents = [self.agents[0] + "_0", self.agents[1] + "_1"]
-            return np.random.shuffle(agents)
-
+        if len(self.agents) > 1:
+            return np.random.shuffle(self.agents)
+        
         # Always include at least one ppo agent (i.e. bc_sp not supported for simplicity)
         agents = ["ppo"]
 
@@ -563,6 +562,7 @@ class OvercookedMultiAgent(MultiAgentEnv):
             agent_action = Action.ACTION_TO_INDEX[joint_action[agent_index]]
             shaped_reward[agent_index] += self.action_rewards[agent_action]
 
+        import pdb; pdb.set_trace()
         for agent_index in range(2):
             if "smirl" in self.curr_agents[agent_index]:
                 shaped_reward[agent_index] = smirl_reward

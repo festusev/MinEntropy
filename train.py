@@ -63,7 +63,7 @@ if __name__ == "__main__":
     )
 
     # Training
-    num_workers = min(5, os.cpu_count() or 1)
+    num_workers = 1 #min(5, os.cpu_count() or 1)
     seed = args.seed
     num_gpus = 1 if torch.cuda.is_available() else 0
     num_gpus_per_worker = 0
@@ -214,12 +214,16 @@ if __name__ == "__main__":
             model += "_0"
         elif model + "_0" == policy_ids[0]:
             model += "_1"
+        else:
+            model += "_0"
         policy_ids[i] = model
         policies[model] = policy_spec
     
     if multiagent_mode:
         policy_mapping_fn = lambda agent_id, *args, **kwargs: cast(str, agent_id)
+        env.agents = policy_ids[:]
     else: # We are doing self-play
+        env.agents = policy_ids[:]
         policy_ids.append(policy_ids[0][:-2] + "_1")
         policy_mapping_fn = lambda agent_id, *args, **kwargs: policy_ids[0]
 
