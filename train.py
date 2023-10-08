@@ -257,6 +257,19 @@ if __name__ == "__main__":
         ],
         "framework": "torch",
     }
+
+    # Logging
+    save_freq = 25  # noqa: F841
+    log_dir = args.log_dir
+    experiment_tag = args.experiment_tag
+    subdir = policy_ids[0][:-2].upper()
+    if multiagent_mode:
+        subdir += "_" + policy_ids[1][:-2].upper()
+    experiment_name_parts = ["cross_play" if multiagent_mode else "self_play", subdir, layout_name]
+    if experiment_tag is not None:
+        experiment_name_parts.append(experiment_tag)
+    experiment_name = os.path.join(*experiment_name_parts)  # noqa: F841
+
     import pdb; pdb.set_trace()
     if "disable_env_checking" in COMMON_CONFIG:
         config["disable_env_checking"] = True
