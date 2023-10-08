@@ -172,11 +172,9 @@ class OvercookedPPOModel(TorchModelV2, nn.Module):
 ModelCatalog.register_custom_model("overcooked_ppo_model", OvercookedPPOModel)
 
 class OvercookedSMIRLModel(OvercookedPPOModel):
-    @override
     def _construct_backbone(self) -> nn.Module:
         return self.construct_default_backbone()
 
-    @override
     def backbone_forward(self, backbone, obs):
         if next(backbone.parameters()).device != obs.device:
             backbone.to(obs.device)
