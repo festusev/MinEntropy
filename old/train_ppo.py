@@ -38,12 +38,12 @@ if __name__ == "__main__":
     parser.add_argument("--human_model_checkpoint", type=str, required=False)
     parser.add_argument("--num_littered_objects", type=int, default=0)
     # parser.add_argument("--smirl", action="store_true")
-    parser.add_argument("--model_0", type=str, required=True) # "ppo", "smirl", or a model checkpoint
-    parser.add_argument("--model_1", type=str)
-    parser.add_argument("--train_both", action="store_true") # We always train model 0, but this is if we want to train model 1
+    parser.add_argument("--model_0", type=str, required=True) # "ppo", "smirl", "bc", or a model checkpoint
+    parser.add_argument("--model_1", type=str, required=True)
+    parser.add_argument("--train_1", action="store_true") # We always train model 0, but this is if we want to train model 1
     args = parser.parse_args()
 
-# Environment
+    # Environment
     layout_name = args.layout_name
     rew_shaping_params = {
         "PLACEMENT_IN_POT_REW": 3,
@@ -102,6 +102,17 @@ if __name__ == "__main__":
         "num_conv_layers": num_conv_layers,
         "split_backbone": split_backbone
     }
+    custom_model = "overcooked_ppo_model"
+
+    model_config = {
+        "custom_model": custom_model,
+        "max_seq_len": max_seq_len,
+        "custom_model_config": custom_model_config,
+        "vf_share_layers": vf_share_layers,
+        "use_lstm": use_lstm,
+        "lstm_cell_size": lstm_cell_size,
+        "use_attention": use_attention,
+    }
 
     # Reward shaping
     use_phi = False  # Whether dense reward should come from potential function or not
@@ -113,67 +124,46 @@ if __name__ == "__main__":
     # Whether the agents should both get all dense rewards.
     share_dense_reward = False
 
-    policy_ids = [args.model_0]
-    multiagent_mode = False
-    if args.model_1: # There is a second model
-        multiagent_mode = True
-        policy_ids.append(args.model_1)
+    checkpoint_to_load_policies = args.human_model_checkpoint
+    if checkpoint_to_load_policies is not None:
+        checkpoint_to_load_policies_config: TrainerConfigDict = load_trainer_config(
+            checkpoint_to_load_policies
+        )
 
-    model_configs = []
-    for i in range(len(policy_ids)):
-        model = policy_ids[i]
-        if model == "ppo": # Training a PPO agent from scratch
-            model_configs.append({"model": {
-                    "custom_model": "overcooked_ppo_model",
-                    "max_seq_len": max_seq_len,
-                    "custom_model_config": custom_model_config,
-                    "vf_share_layers": vf_share_layers,
-                    "use_lstm": use_lstm,
-                    "lstm_cell_size": lstm_cell_size,
-                    "use_attention": use_attention,
-                }})
-        elif model == "smirl": # Training a SMIRL agent from scratch
-            model_configs.append({"model":{
-                    "custom_model": "overcooked_smirl_model",
-                    "max_seq_len": max_seq_len,
-                    "custom_model_config": custom_model_config,
-                    "vf_share_layers": vf_share_layers,
-                    "use_lstm": use_lstm,
-                    "lstm_cell_size": lstm_cell_size,
-                    "use_attention": use_attention,
-                }})
+    # Multiagent
+    multiagent_mode: Literal["self_play", "cross_play"] = (
+        "self_play" if checkpoint_to_load_policies is None else "cross_play"
+    )
+    policy_ids: List[str]
+    policy_mapping_fn: Callable[..., str]
+    if multiagent_mode == "self_play" or (not args.train_both) and checkpoint_to_load_policies is not None:
+        policy_ids = ["ppo"]
+        policy_mapping_fn = lambda agent_id, *args, **kwargs: "ppo"
+    elif multiagent_mode == "cross_play":
+        policy_ids = ["ppo_0", "ppo_1"]
+        policy_mapping_fn = lambda agent_id, *args, **kwargs: cast(str, agent_id)
+    policies_to_train = policy_ids
 
-        else: # Loading a model from checkpoint
-            checkpoint = load_trainer_config(model)
-            loaded_policy_dict: MultiAgentPolicyConfigDict = (checkpoint["multiagent"]["policies"])
+    ############################
+    # Logging
+    save_freq = 25  # noqa: F841
+    log_dir = args.log_dir
+    experiment_tag = args.experiment_tag
+    experiment_name_parts = [multiagent_mode, "PPO", layout_name]
+    if experiment_tag is not None:
+        experiment_name_parts.append(experiment_tag)
+    experiment_name = os.path.join(*experiment_name_parts)  # noqa: F841
+    checkpoint_path = None  # noqa: F841
+    ###############################
 
-            loaded_policy_ids = list(loaded_policy_dict.keys())
-            assert len(loaded_policy_ids) == 1
-            (loaded_policy_id,) = loaded_policy_ids
-
-            (
-                loaded_policy_cls,
-                loaded_policy_obs_space,
-                loaded_policy_action_space,
-                loaded_policy_config,
-            ) = loaded_policy_dict[loaded_policy_id]
-            model_configs.append(loaded_policy_config)
-            model = loaded_policy_id
-        
-        if i==0:
-            model += "_0"
-        elif model + "_0" == policy_ids[0]:
-            model += "_1"
-        else:
-            model += "_0"
-        policy_ids[i] = model
-
+    print("SmirL:", args.smirl)
     env_id = "overcooked_multi_agent"
     env_config = {
         # To be passed into OvercookedGridWorld constructor
         "mdp_params": {
             "layout_name": layout_name,
-            "rew_shaping_params": rew_shaping_params
+            "rew_shaping_params": rew_shaping_params,
+            "smirl": args.smirl
         },
         # To be passed into OvercookedEnv constructor
         "env_params": {
@@ -183,6 +173,7 @@ if __name__ == "__main__":
         },
         # To be passed into OvercookedMultiAgent constructor
         "multi_agent_params": {
+            "agents": ["smirl", "ppo"]
             "reward_shaping_factor": reward_shaping_factor,
             "reward_shaping_horizon": reward_shaping_horizon,
             "use_phi": use_phi,
@@ -194,33 +185,98 @@ if __name__ == "__main__":
             },
             "no_regular_reward": no_regular_reward,
             "action_rewards": action_rewards,
-            "agents": policy_ids
         },
     }
 
     overcooked_env_config = env_config
     env = OvercookedMultiAgent.from_config(overcooked_env_config)
+
     policies: MultiAgentPolicyConfigDict = {}
 
-    for i in range(len(policy_ids)):
-        policies[policy_ids[i]] = PolicySpec(
+    ppo_observation_space = env.ppo_observation_space
+
+    for policy_id in policy_ids:
+        policies[policy_id] = PolicySpec(
             None,
-            env.ppo_observation_space,
+            ppo_observation_space,
             env.action_space,
-            model_configs[i]
+            {"model": model_config},
         )
 
-    if multiagent_mode:
-        policy_mapping_fn = lambda agent_id, *args, **kwargs: cast(str, agent_id)
-        env.agents = policy_ids[:]
-    else: # We are doing self-play
-        env.agents = policy_ids[:]
-        policy_ids.append(policy_ids[0][:-2] + "_1")
-        policy_mapping_fn = lambda agent_id, *args, **kwargs: policy_ids[0]
+    if multiagent_mode == "cross_play" and checkpoint_to_load_policies is not None:
+        # In the case where we want to train a policy via cross-play with an
+        # existing policy from a checkpoint. The loaded policy does not
+        # get trained.
 
-    policies_to_train = [policy_ids[0]]
-    if args.train_both:
-        policies_to_train.append(policy_ids[1])
+        bc_features = False
+        if "multiagent" in checkpoint_to_load_policies_config:
+            loaded_policy_dict: MultiAgentPolicyConfigDict = (
+                checkpoint_to_load_policies_config["multiagent"]["policies"]
+            )
+            loaded_policy_ids = list(loaded_policy_dict.keys())
+            assert len(loaded_policy_ids) == 1
+            (loaded_policy_id,) = loaded_policy_ids
+            loaded_policy_obs_space: spaces.Box = loaded_policy_dict[loaded_policy_id][
+                1
+            ]
+            bc_features = (
+                loaded_policy_obs_space.shape == env.bc_observation_space.shape
+            )
+        else:
+            bc_features = True
+            loaded_policy_id = DEFAULT_POLICY_ID
+            loaded_policy_dict = {}
+
+        if not bc_features:
+            (
+                loaded_policy_cls,
+                loaded_policy_obs_space,
+                loaded_policy_action_space,
+                loaded_policy_config,
+            ) = loaded_policy_dict[loaded_policy_id]
+            policies[loaded_policy_id] = PolicySpec(
+                None,
+                loaded_policy_obs_space,
+                loaded_policy_action_space,
+                loaded_policy_config,
+            )
+
+            #################
+            policy_mapping_fn = (
+                lambda agent_id, *args, loaded_policy_id=loaded_policy_id, **kwargs: "ppo"
+                if agent_id == "ppo_0"
+                else loaded_policy_id
+            )
+            ##################
+
+            checkpoint_env_config = checkpoint_to_load_policies_config["env_config"]
+        else:
+            # We're doing cross play with a BC agent.
+            assert loaded_policy_id == DEFAULT_POLICY_ID
+            policies[DEFAULT_POLICY_ID] = PolicySpec(
+                None,
+                env.bc_observation_space,
+                env.action_space,
+                {
+                    "model": {
+                        **checkpoint_to_load_policies_config.get("model", {}),
+                        **loaded_policy_dict.get(
+                            DEFAULT_POLICY_ID, (None, None, None, {})
+                        )[3].get("model", {}),
+                        "vf_share_layers": True,
+                    }
+                },
+            )
+            env_config["multi_agent_params"]["bc_schedule"] = [
+                (0, 1),
+                (float("inf"), 1),
+            ]
+            policy_mapping_fn = (
+                lambda agent_id, *args, **kwargs: DEFAULT_POLICY_ID
+                if agent_id.startswith("bc")
+                else "ppo"
+            )
+    
 
     config: TrainerConfigDict = {  # noqa: F841
         "env": env_id,
@@ -252,19 +308,7 @@ if __name__ == "__main__":
         ],
         "framework": "torch",
     }
-
-    # Logging
-    save_freq = 25  # noqa: F841
-    log_dir = args.log_dir
-    experiment_tag = args.experiment_tag
-    subdir = policy_ids[0][:-2].upper()
-    if multiagent_mode:
-        subdir += "_" + policy_ids[1][:-2].upper()
-    experiment_name_parts = ["cross_play" if multiagent_mode else "self_play", subdir, layout_name]
-    if experiment_tag is not None:
-        experiment_name_parts.append(experiment_tag)
-    experiment_name = os.path.join(*experiment_name_parts)  # noqa: F841
-
+    import pdb; pdb.set_trace()
     if "disable_env_checking" in COMMON_CONFIG:
         config["disable_env_checking"] = True
 
@@ -280,6 +324,14 @@ if __name__ == "__main__":
             experiment_name,
         ),
     )
+
+    if checkpoint_to_load_policies is not None:
+        print(f"Initializing human policy from {checkpoint_to_load_policies}")
+        load_policies_from_checkpoint(checkpoint_to_load_policies, trainer)
+
+    if checkpoint_path is not None:
+        print(f"Restoring checkpoint at {checkpoint_path}")
+        trainer.restore(checkpoint_path)
 
     result = None
     for _ in range(num_training_iters):
