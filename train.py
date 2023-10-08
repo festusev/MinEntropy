@@ -113,6 +113,61 @@ if __name__ == "__main__":
     # Whether the agents should both get all dense rewards.
     share_dense_reward = False
 
+    policy_ids = [args.model_0]
+    multiagent_mode = False
+    if args.model_1: # There is a second model
+        multiagent_mode = True
+        policy_ids.append(args.model_1)
+
+    model_configs = []
+    for i in range(len(policy_ids)):
+        model = policy_ids[i]
+        if model == "ppo": # Training a PPO agent from scratch
+            model_configs.append({"model": {
+                    "custom_model": "overcooked_ppo_model",
+                    "max_seq_len": max_seq_len,
+                    "custom_model_config": custom_model_config,
+                    "vf_share_layers": vf_share_layers,
+                    "use_lstm": use_lstm,
+                    "lstm_cell_size": lstm_cell_size,
+                    "use_attention": use_attention,
+                }})
+        elif model == "smirl": # Training a SMIRL agent from scratch
+            model_configs.append({"model":{
+                    "custom_model": "overcooked_smirl_model",
+                    "max_seq_len": max_seq_len,
+                    "custom_model_config": custom_model_config,
+                    "vf_share_layers": vf_share_layers,
+                    "use_lstm": use_lstm,
+                    "lstm_cell_size": lstm_cell_size,
+                    "use_attention": use_attention,
+                }})
+
+        else: # Loading a model from checkpoint
+            checkpoint = load_trainer_config(model)
+            loaded_policy_dict: MultiAgentPolicyConfigDict = (checkpoint["multiagent"]["policies"])
+
+            loaded_policy_ids = list(loaded_policy_dict.keys())
+            assert len(loaded_policy_ids) == 1
+            (loaded_policy_id,) = loaded_policy_ids
+
+            (
+                loaded_policy_cls,
+                loaded_policy_obs_space,
+                loaded_policy_action_space,
+                loaded_policy_config,
+            ) = loaded_policy_dict[loaded_policy_id]
+            model_configs.append(loaded_policy_config)
+            model = loaded_policy_id
+        
+        if i==0:
+            model += "_0"
+        elif model + "_0" == policy_ids[0]:
+            model += "_1"
+        else:
+            model += "_0"
+        policy_ids[i] = model
+
     env_id = "overcooked_multi_agent"
     env_config = {
         # To be passed into OvercookedGridWorld constructor
@@ -139,6 +194,7 @@ if __name__ == "__main__":
             },
             "no_regular_reward": no_regular_reward,
             "action_rewards": action_rewards,
+            "agents": policy_ids
         },
     }
 
@@ -146,79 +202,14 @@ if __name__ == "__main__":
     env = OvercookedMultiAgent.from_config(overcooked_env_config)
     policies: MultiAgentPolicyConfigDict = {}
 
-    policy_ids = [args.model_0]
-    multiagent_mode = False
-    if args.model_1: # There is a second model
-        multiagent_mode = True
-        policy_ids.append(args.model_1)
-
     for i in range(len(policy_ids)):
-        model = policy_ids[i]
-        if model == "ppo": # Training a PPO agent from scratch
-            model_config = {
-                    "custom_model": "overcooked_ppo_model",
-                    "max_seq_len": max_seq_len,
-                    "custom_model_config": custom_model_config,
-                    "vf_share_layers": vf_share_layers,
-                    "use_lstm": use_lstm,
-                    "lstm_cell_size": lstm_cell_size,
-                    "use_attention": use_attention,
-                }
+        policies[policy_ids[i]] = PolicySpec(
+            None,
+            env.ppo_observation_space,
+            env.action_space,
+            model_configs[i]
+        )
 
-            policy_spec = PolicySpec(
-                None,
-                env.ppo_observation_space,
-                env.action_space,
-                {"model": model_config}
-            )
-        elif model == "smirl": # Training a SMIRL agent from scratch
-            model_config =  {
-                    "custom_model": "overcooked_smirl_model",
-                    "max_seq_len": max_seq_len,
-                    "custom_model_config": custom_model_config,
-                    "vf_share_layers": vf_share_layers,
-                    "use_lstm": use_lstm,
-                    "lstm_cell_size": lstm_cell_size,
-                    "use_attention": use_attention,
-                }
-
-            policy_spec = PolicySpec(
-                None,
-                env.ppo_observation_space,
-                env.action_space,
-                {"model": model_config}
-            )
-        else: # Loading a model from checkpoint
-            checkpoint = load_trainer_config(model)
-            loaded_policy_dict: MultiAgentPolicyConfigDict = (checkpoint["multiagent"]["policies"])
-
-            loaded_policy_ids = list(loaded_policy_dict.keys())
-            assert len(loaded_policy_ids) == 1
-            (loaded_policy_id,) = loaded_policy_ids
-
-            (
-                loaded_policy_cls,
-                loaded_policy_obs_space,
-                loaded_policy_action_space,
-                loaded_policy_config,
-            ) = loaded_policy_dict[loaded_policy_id]
-            policy_spec = PolicySpec(
-                None,
-                loaded_policy_obs_space,
-                loaded_policy_action_space,
-                loaded_policy_config,
-            )
-            model = loaded_policy_id
-        
-        if i==0:
-            model += "_0"
-        elif model + "_0" == policy_ids[0]:
-            model += "_1"
-        else:
-            model += "_0"
-        policy_ids[i] = model
-        policies[model] = policy_spec
-    
     if multiagent_mode:
         policy_mapping_fn = lambda agent_id, *args, **kwargs: cast(str, agent_id)
         env.agents = policy_ids[:]
