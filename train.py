@@ -40,7 +40,7 @@ if __name__ == "__main__":
     # parser.add_argument("--smirl", action="store_true")
     parser.add_argument("--model_0", type=str, required=True) # "ppo", "smirl", or a model checkpoint
     parser.add_argument("--model_1", type=str)
-    parser.add_argument("--train_1", action="store_true") # We always train model 0, but this is if we want to train model 1
+    parser.add_argument("--train_both", action="store_true") # We always train model 0, but this is if we want to train model 1
     args = parser.parse_args()
 
 # Environment
@@ -118,8 +118,7 @@ if __name__ == "__main__":
         # To be passed into OvercookedGridWorld constructor
         "mdp_params": {
             "layout_name": layout_name,
-            "rew_shaping_params": rew_shaping_params,
-            "smirl": args.smirl
+            "rew_shaping_params": rew_shaping_params
         },
         # To be passed into OvercookedEnv constructor
         "env_params": {
@@ -153,7 +152,8 @@ if __name__ == "__main__":
         multiagent_mode = True
         policy_ids.append(args.model_1)
 
-    for model in policy_ids:
+    for i in range(len(policy_ids)):
+        model = policy_ids[i]
         if model == "ppo": # Training a PPO agent from scratch
             model_config = {
                     "custom_model": "overcooked_ppo_model",
@@ -165,7 +165,7 @@ if __name__ == "__main__":
                     "use_attention": use_attention,
                 }
 
-            policies[model] = PolicySpec(
+            policy_spec = PolicySpec(
                 None,
                 env.ppo_observation_space,
                 env.action_space,
@@ -182,7 +182,7 @@ if __name__ == "__main__":
                     "use_attention": use_attention,
                 }
 
-            policies[model] = PolicySpec(
+            policy_spec = PolicySpec(
                 None,
                 env.ppo_observation_space,
                 env.action_space,
@@ -202,14 +202,26 @@ if __name__ == "__main__":
                 loaded_policy_action_space,
                 loaded_policy_config,
             ) = loaded_policy_dict[loaded_policy_id]
-            policies[loaded_policy_id] = PolicySpec(
+            policy_spec = PolicySpec(
                 None,
                 loaded_policy_obs_space,
                 loaded_policy_action_space,
                 loaded_policy_config,
             )
-
-    policy_mapping_fn = None # TODO: Fix this
+            model = loaded_policy_id
+        
+        if i==0:
+            model += "_0"
+        elif model + "_0" == policy_ids[0]:
+            model += "_1"
+        policy_ids[i] = model
+        policies[model] = policy_spec
+    
+    if multiagent_mode:
+        policy_mapping_fn = lambda agent_id, *args, **kwargs: cast(str, agent_id)
+    else: # We are doing self-play
+        policy_ids.append(policy_ids[0][:-2] + "_1")
+        policy_mapping_fn = lambda agent_id, *args, **kwargs: policy_ids[0]
 
     policies_to_train = [policy_ids[0]]
     if args.train_both:
