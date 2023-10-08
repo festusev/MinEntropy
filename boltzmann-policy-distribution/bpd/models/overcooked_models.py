@@ -47,7 +47,6 @@ class OvercookedPPOModel(TorchModelV2, nn.Module):
         self.num_outputs = num_outputs
         if self.num_outputs is None:
             self.num_outputs = self.size_hidden_layers
-        self.smirl = custom_model_config.get("smirl")
         self.vf_share_layers: bool = model_config["vf_share_layers"]
         if self.vf_share_layers:
             self.backbone = self._construct_backbone()
@@ -120,10 +119,7 @@ class OvercookedPPOModel(TorchModelV2, nn.Module):
         return nn.Sequential(*backbone_layers)
 
     def _construct_backbone(self) -> nn.Module:
-        if self.smirl:
-            return self.construct_default_backbone()
-        else:
-            return self.construct_default_backbone(override_channels=26)
+        return self.construct_default_backbone(override_channels=26)
 
     def _get_obs(self, input_dict):
         obs = (
@@ -143,8 +139,7 @@ class OvercookedPPOModel(TorchModelV2, nn.Module):
     def backbone_forward(self, backbone, obs):
         if next(backbone.parameters()).device != obs.device:
             backbone.to(obs.device)
-        if not self.smirl:
-            obs = obs[:, :26, ...]
+        obs = obs[:, :26, ...]
         return backbone(obs)
 
     def forward(self, input_dict, state, seq_lens):
@@ -176,6 +171,19 @@ class OvercookedPPOModel(TorchModelV2, nn.Module):
 
 ModelCatalog.register_custom_model("overcooked_ppo_model", OvercookedPPOModel)
 
+class OvercookedSMIRLModel(OvercookedPPOModel):
+    @override
+    def _construct_backbone(self) -> nn.Module:
+        return self.construct_default_backbone()
+
+    @override
+    def backbone_forward(self, backbone, obs):
+        if next(backbone.parameters()).device != obs.device:
+            backbone.to(obs.device)
+
+        return backbone(obs)
+
+ModelCatalog.register_custom_model("overcooked_smirl_model", OvercookedSMIRLModel)
 
 class OvercookedPPODistributionModel(OvercookedPPOModel, ModelWithDiscriminator):
     """
