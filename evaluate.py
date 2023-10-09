@@ -106,9 +106,17 @@ if __name__ == "__main__":
         assert len(trainer_1_policies) == 1, "Too many policies specified"
         policy_0 = trainer_0.get_policy(trainer_0_policies[0])
         policy_1 = trainer_1.get_policy(trainer_1_policies[0])
+        
+        # Swap the policies to make a smirl policy always first 
+        if "smirl" in trainer_1_policies[0]:
+            policy_0, policy_1 = policy_1, policy_0
+
     else: # Both policies are coming from trainer 0
         policy_0 = trainer_0.get_policy(trainer_0_policies[0])
         policy_1 = trainer_0.get_policy(trainer_0_policies[1])
+
+        if "smirl" in trainer_0_policies[1]:
+            policy_0, policy_1 = policy_1, policy_0
 
     assert isinstance(policy_0, TorchPolicy) and isinstance(policy_1, TorchPolicy)
 
@@ -147,13 +155,12 @@ if __name__ == "__main__":
     env: OvercookedEnv = evaluator.env
     bc_obs_shape = env.featurize_state_mdp(env.mdp.get_standard_start_state())[0].shape
     
-    import pdb; pdb.set_trace()
     def get_featurize_fn(policy: TorchPolicy):
         if policy.observation_space.shape == bc_obs_shape:
             return lambda state: env.featurize_state_mdp(state)
         else:
             return env.lossless_state_encoding_mdp
-
+    
     results = evaluate(
         eval_params=dict(eval_params),
         mdp_params=mdp_params,
