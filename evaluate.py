@@ -145,7 +145,6 @@ if __name__ == "__main__":
         env_params=env_params,
     )
     env: OvercookedEnv = evaluator.env
-
     bc_obs_shape = env.featurize_state_mdp(env.mdp.get_standard_start_state())[0].shape
 
     def get_featurize_fn(policy: TorchPolicy):
