@@ -499,17 +499,17 @@ class OvercookedMultiAgent(MultiAgentEnv):
         next_state: OvercookedState
         dense_reward: List[float]
         if self.use_phi:
-            next_state, sparse_reward, smirl_reward, done, info = self.base_env.step(
+            next_state, sparse_reward, done, info = self.base_env.step(
                 joint_action, display_phi=True
             )
             potential = info["phi_s_prime"] - info["phi_s"]
             dense_reward = [potential, potential]
         else:
-            next_state, sparse_reward, smirl_reward, done, info = self.base_env.step(
+            next_state, sparse_reward, done, info = self.base_env.step(
                 joint_action, display_phi=False
             )
             dense_reward = info["shaped_r_by_agent"]
-
+        smirl_reward = info["smirl_reward"]
         ob_p0, ob_p1 = self._get_obs(next_state)
 
         # Add some extra reward shaping.
