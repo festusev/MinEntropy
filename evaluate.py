@@ -110,6 +110,7 @@ if __name__ == "__main__":
     trainer_0 = load_trainer(
         checkpoint_path_0, trainer_classes[run_0], config_overrides={"input": "sampler"}
     )
+    import pdb; pdb.set_trace()
     policy_0 = trainer_0.get_policy(policy_id_0)
     trainer_1 = load_trainer(
         checkpoint_path_1, trainer_classes[run_1], config_overrides={"input": "sampler"}
