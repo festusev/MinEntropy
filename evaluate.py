@@ -146,7 +146,8 @@ if __name__ == "__main__":
     )
     env: OvercookedEnv = evaluator.env
     bc_obs_shape = env.featurize_state_mdp(env.mdp.get_standard_start_state())[0].shape
-
+    
+    import pdb; pdb.set_trace()
     def get_featurize_fn(policy: TorchPolicy):
         if policy.observation_space.shape == bc_obs_shape:
             return lambda state: env.featurize_state_mdp(state)
