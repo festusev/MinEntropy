@@ -22,45 +22,31 @@ from ray.rllib.utils.typing import PolicyID
 from tqdm import tqdm
 from typing_extensions import Literal
 
-RunStr = Literal["ppo", "bc"]
-trainer_classes: Dict[RunStr, Type[Trainer]] = {
-    "ppo": PPOTrainer,
-    "bc": BCTrainer,
-}
-
-default_policy_ids: Dict[RunStr, PolicyID] = {
-    "ppo": "ppo",
-    "bc": DEFAULT_POLICY_ID,
-}
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--run_0",
-        type=str,
-        choices=list(map(str, trainer_classes.keys())),
-        help="algorithm used to train the first agent",
-        required=True,
-    )
+    # parser.add_argument(
+    #     "--run_0",
+    #     type=str,
+    #     choices=list(map(str, trainer_classes.keys())),
+    #     help="algorithm used to train the first agent",
+    #     required=True,
+    # )
     parser.add_argument(
         "--checkpoint_path_0",
         type=str,
         help="path to checkpoint of the first agent",
         required=True,
     )
-    parser.add_argument(
-        "--run_1",
-        type=str,
-        choices=list(map(str, trainer_classes.keys())),
-        help="algorithm used to train the second agent",
-        required=True,
-    )
+    # parser.add_argument(
+    #     "--run_1",
+    #     type=str,
+    #     choices=list(map(str, trainer_classes.keys())),
+    #     help="algorithm used to train the second agent"
+    # )
     parser.add_argument(
         "--checkpoint_path_1",
         type=str,
-        help="path to checkpoint of the second agent",
-        required=True,
+        help="path to checkpoint of the second agent"
     )
     parser.add_argument(
         "--layout_name",
@@ -95,10 +81,6 @@ if __name__ == "__main__":
         include_dashboard=False,
     )
 
-    run_0: RunStr = args.run_0
-    run_1: RunStr = args.run_1
-    policy_id_0 = default_policy_ids[run_0]
-    policy_id_1 = default_policy_ids[run_1]
     checkpoint_path_0: str = args.checkpoint_path_0
     checkpoint_path_1: str = args.checkpoint_path_1
     layout_name: str = args.layout_name
@@ -108,14 +90,26 @@ if __name__ == "__main__":
     render_path: Optional[str] = args.render_path
 
     trainer_0 = load_trainer(
-        checkpoint_path_0, trainer_classes[run_0], config_overrides={"input": "sampler"}
+        checkpoint_path_0, PPOTrainer, config_overrides={"input": "sampler"}
     )
-    import pdb; pdb.set_trace()
-    policy_0 = trainer_0.get_policy(policy_id_0)
-    trainer_1 = load_trainer(
-        checkpoint_path_1, trainer_classes[run_1], config_overrides={"input": "sampler"}
-    )
-    policy_1 = trainer_1.get_policy(policy_id_1)
+
+    trainer_0_policies = list(trainer_0.workers.local_worker().policy_map.policy_specs.keys())
+
+    if args.checkpoint_path_1 is not None:
+        assert len(trainer_0_policies) == 1, "Too many policies specified"
+
+        trainer_1 = load_trainer(
+            checkpoint_path_1, PPOTrainer, config_overrides={"input": "sampler"}
+        )
+        trainer_1_policies = list(trainer_1.workers.local_worker().policy_map.policy_specs.keys())
+
+        assert len(trainer_1_policies) == 1, "Too many policies specified"
+        policy_0 = trainer_0.get_policy(trainer_0_policies[0])
+        policy_1 = trainer_1.get_policy(trainer_1_policies[0])
+    else: # Both policies are coming from trainer 0
+        policy_0 = trainer_0.get_policy(trainer_0_policies[0])
+        policy_1 = trainer_0.get_policy(trainer_0_policies[1])
+
     assert isinstance(policy_0, TorchPolicy) and isinstance(policy_1, TorchPolicy)
 
     horizon = 400
