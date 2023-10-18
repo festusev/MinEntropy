@@ -1136,7 +1136,7 @@ class OvercookedGridworld(object):
 
             prob_st = np.clip(prob_st, 0.05, 0.95) # clip it
 
-            smirl_reward = np.int32(np.round(np.log(prob_st).mean()))
+            smirl_reward = np.log(prob_st).mean()
 
         self.state_vecs.append(onehot_obs)
 

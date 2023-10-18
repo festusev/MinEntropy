@@ -79,6 +79,7 @@ if __name__ == "__main__":
     ray.init(
         ignore_reinit_error=True,
         include_dashboard=False,
+        num_cpus=1
     )
 
     checkpoint_path_0: str = args.checkpoint_path_0

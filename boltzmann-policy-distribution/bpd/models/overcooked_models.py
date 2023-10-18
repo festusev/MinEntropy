@@ -140,7 +140,10 @@ class OvercookedPPOModel(TorchModelV2, nn.Module):
         if next(backbone.parameters()).device != obs.device:
             backbone.to(obs.device)
         obs = obs[:, :26, ...]
-        return backbone(obs)
+        if torch.any(torch.isnan(obs)) or torch.any(torch.isinf(obs)):
+            import pdb; pdb.set_trace()
+        out = backbone(obs)
+        return out
 
     def forward(self, input_dict, state, seq_lens):
         self._obs = self._get_obs(input_dict)
@@ -178,8 +181,10 @@ class OvercookedSMIRLModel(OvercookedPPOModel):
     def backbone_forward(self, backbone, obs):
         if next(backbone.parameters()).device != obs.device:
             backbone.to(obs.device)
-
-        return backbone(obs)
+        if torch.any(torch.isnan(obs)) or torch.any(torch.isinf(obs)):
+            import pdb; pdb.set_trace()
+        out = backbone(obs)
+        return out
 
 ModelCatalog.register_custom_model("overcooked_smirl_model", OvercookedSMIRLModel)
 

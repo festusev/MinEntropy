@@ -45,7 +45,7 @@ class OvercookedEnv(object):
 
     TIMESTEP_TRAJ_KEYS = ["ep_states", "ep_actions", "ep_rewards", "ep_dones", "ep_infos"]
     EPISODE_TRAJ_KEYS = ["ep_returns", "ep_lengths", "mdp_params", "env_params", "metadatas"]
-    DEFAULT_TRAJ_KEYS = TIMESTEP_TRAJ_KEYS + EPISODE_TRAJ_KEYS + ["metadatas"]
+    DEFAULT_TRAJ_KEYS = TIMESTEP_TRAJ_KEYS + EPISODE_TRAJ_KEYS + ["metadatas", "smirl_rewards"]
 
 
     #########################
@@ -421,6 +421,7 @@ class OvercookedEnv(object):
                                                [trajectory[i][2] for i in range(len(trajectory))], \
                                                [trajectory[i][3] for i in range(len(trajectory))], \
                                                [trajectory[i][4] for i in range(len(trajectory))]
+            smirl_rewards = [traj["smirl_reward"] for traj in infos]
             trajectories["ep_states"].append(obs)
             trajectories["ep_actions"].append(actions)
             trajectories["ep_rewards"].append(rews)
@@ -431,7 +432,7 @@ class OvercookedEnv(object):
             trajectories["mdp_params"].append(self.mdp.mdp_params)
             trajectories["env_params"].append(self.env_params)
             trajectories["metadatas"].append(metadata_fn(rollout_info))
-
+            trajectories["smirl_rewards"].append(smirl_rewards)
             # we do not need to regenerate MDP if we are trying to generate a series of rollouts using the same MDP
             # Basically, the FALSE here means that we are using the same layout and starting positions
             # (if regen_mdp == True, resetting will call mdp_gen_fn to generate another layout & starting position)
@@ -440,8 +441,8 @@ class OvercookedEnv(object):
 
             if info:
                 mu, se = mean_and_std_err(trajectories["ep_returns"])
-                description = "Avg rew: {:.2f} (std: {:.2f}, se: {:.2f}); avg len: {:.2f}; ".format(
-                    mu, np.std(trajectories["ep_returns"]), se, np.mean(trajectories["ep_lengths"]))
+                description = "Avg rew: {:.2f} (std: {:.2f}, se: {:.2f}); SMIRL rew: {:.2f}; avg len: {:.2f}; ".format(
+                    mu, np.std(trajectories["ep_returns"]), se, np.sum(trajectories["smirl_rewards"], axis=1).mean(), np.mean(trajectories["ep_lengths"]))
                 description += metadata_info_fn(trajectories["metadatas"])
                 range_iterator.set_description(description)
                 range_iterator.refresh()
