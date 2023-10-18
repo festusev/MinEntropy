@@ -146,20 +146,21 @@ if __name__ == "__main__":
         else: # Loading a model from checkpoint
             checkpoint = load_trainer_config(model)
             loaded_policy_dict: MultiAgentPolicyConfigDict = (checkpoint["multiagent"]["policies"])
-
+            
             loaded_policy_ids = list(loaded_policy_dict.keys())
-            assert len(loaded_policy_ids) == 1
-            (loaded_policy_id,) = loaded_policy_ids
+            for loaded_policy_id in loaded_policy_ids:
+                (
+                    loaded_policy_cls,
+                    loaded_policy_obs_space,
+                    loaded_policy_action_space,
+                    loaded_policy_config,
+                ) = loaded_policy_dict[loaded_policy_id]
+                
+                model_configs.append(loaded_policy_config)
+                model = loaded_policy_id
+            policy_ids = loaded_policy_ids
+            break
 
-            (
-                loaded_policy_cls,
-                loaded_policy_obs_space,
-                loaded_policy_action_space,
-                loaded_policy_config,
-            ) = loaded_policy_dict[loaded_policy_id]
-            model_configs.append(loaded_policy_config)
-            model = loaded_policy_id
-        
         if i==0:
             model += "_0"
         elif model + "_0" == policy_ids[0]:
@@ -221,7 +222,6 @@ if __name__ == "__main__":
     policies_to_train = [policy_ids[0]]
     if args.train_both:
         policies_to_train.append(policy_ids[1])
-
     config: TrainerConfigDict = {  # noqa: F841
         "env": env_id,
         "env_config": env_config,
