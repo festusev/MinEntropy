@@ -96,6 +96,7 @@ if __name__ == "__main__":
 
     trainer_0_policies = list(trainer_0.workers.local_worker().policy_map.policy_specs.keys())
 
+    policy_ids = []
     if args.checkpoint_path_1 is not None:
         assert len(trainer_0_policies) == 1, "Too many policies specified"
 
@@ -111,6 +112,9 @@ if __name__ == "__main__":
         # Swap the policies to make a smirl policy always first 
         if "smirl" in trainer_1_policies[0]:
             policy_0, policy_1 = policy_1, policy_0
+            policy_ids = [trainer_1_policies[0], trainer_0_policies[0]]
+        else:
+            policy_ids = [trainer_0_policies[0], trainer_1_policies[0]]
 
     else: # Both policies are coming from trainer 0
         policy_0 = trainer_0.get_policy(trainer_0_policies[0])
@@ -118,6 +122,9 @@ if __name__ == "__main__":
 
         if "smirl" in trainer_0_policies[1]:
             policy_0, policy_1 = policy_1, policy_0
+            policy_ids = [trainer_0_policies[1], trainer_0_policies[0]]
+        else:
+            policy_ids = trainer_0_policies
 
     assert isinstance(policy_0, TorchPolicy) and isinstance(policy_1, TorchPolicy)
 
@@ -161,7 +168,6 @@ if __name__ == "__main__":
             return lambda state: env.featurize_state_mdp(state)
         else:
             return env.lossless_state_encoding_mdp
-    
     results = evaluate(
         eval_params=dict(eval_params),
         mdp_params=mdp_params,
@@ -171,7 +177,7 @@ if __name__ == "__main__":
         agent_0_featurize_fn=get_featurize_fn(policy_0),
         agent_1_featurize_fn=get_featurize_fn(policy_1),
     )
-
+    import pdb; pdb.set_trace()
     ep_returns = [int(ep_return) for ep_return in results["ep_returns"]]
     simple_results = {
         "ep_returns": ep_returns,
@@ -181,8 +187,7 @@ if __name__ == "__main__":
         "results": results,
     }
     ep_returns_all = list(ep_returns)
-
-    results_flipped = evaluate(
+    '''results_flipped = evaluate(
         eval_params=dict(eval_params),
         mdp_params=mdp_params,
         outer_shape=None,
@@ -200,7 +205,7 @@ if __name__ == "__main__":
     )
     ep_returns_all.extend(ep_returns_flipped)
     all_results["results_flippped"] = results_flipped
-
+    '''
     simple_results.update(
         {
             "ep_returns_all": ep_returns_all,
@@ -208,7 +213,21 @@ if __name__ == "__main__":
         }
     )
 
+
     if render_path:
+        # First, render a heatmap of actions
+        import matplotlib.pyplot as plt
+
+        for agent_index in range(2):
+            fig, ax = plt.subplots()
+
+            ax.imshow(np.mean([results["ep_infos"][0][i]["agent_infos"][agent_index]["action_probs"] for i in range(400)], axis=0), cmap="hot")
+            ax.set_xticks(np.arange(6))
+            ax.set_xticklabels(["North", "South", "East", "West", "Stay", "Interact"])
+            plt.title(policy_ids[agent_index] + " action probs")
+            plt.savefig(f"{render_path}_policy_{policy_ids[agent_index]}_action_probs.png")
+            plt.clf()
+
         import pygame
         import skvideo.io
         from overcooked_ai_py.visualization.state_visualizer import StateVisualizer

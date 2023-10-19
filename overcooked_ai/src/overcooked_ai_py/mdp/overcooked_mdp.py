@@ -1127,6 +1127,7 @@ class OvercookedGridworld(object):
         new_state_vec = np.array(self.lossless_state_encoding(new_state))[:, :self.width, :self.height]
         onehot_obs = self.onehot_obs(new_state_vec[0, :, :, :26])
 
+        smirl_full_reward = 0
         smirl_reward = 0
         if len(self.state_vecs) > 0:
             std_constant = 0.01
@@ -1135,8 +1136,9 @@ class OvercookedGridworld(object):
             prob_st = sst.bernoulli.pmf(onehot_obs, thetas[0])
 
             prob_st = np.clip(prob_st, 0.05, 0.95) # clip it
-
-            smirl_reward = np.log(prob_st).mean()
+            
+            smirl_full_reward = np.log(prob_st)
+            smirl_reward = smirl_full_reward.mean()
 
         self.state_vecs.append(onehot_obs)
 
@@ -1148,12 +1150,12 @@ class OvercookedGridworld(object):
 
         # Finally, environment effects
         self.step_environment_effects(new_state)
-        
         infos = {
             "event_infos": events_infos,
             "sparse_reward_by_agent": sparse_reward_by_agent,
             "shaped_reward_by_agent": shaped_reward_by_agent,
-            "smirl_reward": smirl_reward
+            "smirl_reward": smirl_reward,
+            "smirl_full_reward": smirl_full_reward
         }
         
         if display_phi:

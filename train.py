@@ -269,6 +269,7 @@ if __name__ == "__main__":
         config["disable_env_checking"] = True
 
     ray.init(
+        num_cpus=5,
         ignore_reinit_error=True,
         include_dashboard=False,
     )
