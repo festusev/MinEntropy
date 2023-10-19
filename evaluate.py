@@ -177,7 +177,6 @@ if __name__ == "__main__":
         agent_0_featurize_fn=get_featurize_fn(policy_0),
         agent_1_featurize_fn=get_featurize_fn(policy_1),
     )
-    import pdb; pdb.set_trace()
     ep_returns = [int(ep_return) for ep_return in results["ep_returns"]]
     simple_results = {
         "ep_returns": ep_returns,
