@@ -534,7 +534,10 @@ class OvercookedMultiAgent(MultiAgentEnv):
         # Caculate some extra custom metrics.
         prev_player_state: PlayerState
         info["custom_metrics"] = {}
-        info["custom_metrics"]["smirl_full_reward"] = np.mean(info["smirl_full_reward"], axis=(0, 1))
+        smirl_full_reward = np.mean(info["smirl_full_reward"], axis=(0, 1))
+        for i in range(len(smirl_full_reward)):
+            info["custom_metrics"]["smirl_" + str(i)] = smirl_full_reward[i]
+
         # if self.base_env.game_stats[f"onion_drop"][1]: import pdb; pdb.set_trace()
         for player_index, prev_player_state in enumerate(prev_state.players):
             next_player_state: PlayerState = next_state.players[player_index]
