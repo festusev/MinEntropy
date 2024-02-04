@@ -370,6 +370,10 @@ if __name__ == "__main__":
 
         if trainer.iteration % save_freq == 0:
             checkpoint = trainer.save()
+
+            if empowerment_model is not None:
+                empowerment_model.save_to_folder(os.path.join(checkpoint, "empowerment_model"))
+
             print(f"Saved checkpoint to {checkpoint}")
 
     checkpoint = trainer.save()

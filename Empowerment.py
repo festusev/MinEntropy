@@ -43,6 +43,10 @@ class Empowerment(ABC):
     def update(self, empowerment):
         pass
 
+    @abstractmethod
+    def save_to_folder(self, folder):
+        pass
+
     def convertObs(self, obs):
         return torch.tensor(obs[..., :self.in_channels].transpose((0, -1, 1, 2)), dtype=torch.float32, device=self.device)
 
@@ -175,6 +179,13 @@ class ContrastiveEmpowerment(Empowerment):
         self.info = empowerment.info
         self.sa_encoder = empowerment.sa_encoder
         self.g_encoder = empowerment.g_encoder
+
+
+    def save_to_folder(self, folder):
+        import os
+        os.makedirs(folder, exist_ok=True)
+        torch.save(self.sa_encoder.state_dict(), os.path.join(folder, "sa_encoder.pt"))
+        torch.save(self.g_encoder.state_dict(), os.path.join(folder, "g_encoder.pt"))
 
 
 class SEncoder(nn.Module):
