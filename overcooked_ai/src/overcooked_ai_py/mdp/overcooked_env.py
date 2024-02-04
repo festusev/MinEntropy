@@ -45,7 +45,7 @@ class OvercookedEnv(object):
 
     TIMESTEP_TRAJ_KEYS = ["ep_states", "ep_actions", "ep_rewards", "ep_dones", "ep_infos"]
     EPISODE_TRAJ_KEYS = ["ep_returns", "ep_lengths", "mdp_params", "env_params", "metadatas"]
-    DEFAULT_TRAJ_KEYS = TIMESTEP_TRAJ_KEYS + EPISODE_TRAJ_KEYS + ["metadatas", "smirl_rewards"]
+    DEFAULT_TRAJ_KEYS = TIMESTEP_TRAJ_KEYS + EPISODE_TRAJ_KEYS + ["metadatas", "smirl_rewards", "empowerment_rewards"]
 
 
     #########################
@@ -227,8 +227,10 @@ class OvercookedEnv(object):
         if done: self._add_episode_info(env_info)
 
         timestep_sparse_reward = sum(mdp_infos["sparse_reward_by_agent"])
-        env_info["smirl_reward"] = mdp_infos["smirl_reward"]
-        env_info["smirl_full_reward"] = mdp_infos["smirl_full_reward"]
+
+        del mdp_infos["event_infos"]
+        env_info.update(mdp_infos)
+
         return (next_state, timestep_sparse_reward, done, env_info)
 
     def lossless_state_encoding_mdp(self, state):
@@ -242,6 +244,9 @@ class OvercookedEnv(object):
         Wrapper of the mdp's featurize_state
         """
         return self.mdp.featurize_state(state, self.mlam, self.horizon)
+
+    def update_empowerment(self, empowerment):
+        self.mdp.update_empowerment(empowerment)
 
     def reset(self, regen_mdp=True, outside_info={}):
         """

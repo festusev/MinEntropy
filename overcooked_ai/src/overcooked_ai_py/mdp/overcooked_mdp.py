@@ -848,7 +848,8 @@ class OvercookedGridworld(object):
     #########################
 
     def __init__(self, terrain, start_player_positions, start_bonus_orders=[], rew_shaping_params=None, layout_name="unnamed_layout",
-                 start_all_orders=[], num_items_for_soup=3, order_bonus=2, start_state=None, smirl=False, **kwargs):
+                 start_all_orders=[], num_items_for_soup=3, order_bonus=2, start_state=None, smirl=False, yell=False,
+                 empowerment_model=None, **kwargs):
         """
         terrain: a matrix of strings that encode the MDP layout
         layout_name: string identifier of the layout
@@ -876,9 +877,13 @@ class OvercookedGridworld(object):
         self.order_bonus = order_bonus
         self.start_state = start_state
         self.smirl = smirl
+        self.yell = yell
+        self.empowerment_model = empowerment_model
         self._opt_recipe_discount_cache = {}
         self._opt_recipe_cache = {}
         self._prev_potential_params = {}
+
+        self.loud = False
 
 
     @staticmethod
@@ -1001,7 +1006,10 @@ class OvercookedGridworld(object):
 
     def _get_player_actions(self, state, player_num):
         """All actions are allowed to all players in all states."""
+        # if self.yell:
         return Action.ALL_ACTIONS
+        # else:
+        #     return Action.ALL_ACTIONS[:-1]
 
     def _check_action(self, state, joint_action):
         for p_action, p_legal_actions in zip(joint_action, self.get_actions(state)):
@@ -1101,6 +1109,9 @@ class OvercookedGridworld(object):
     def sufficient_statistics_size(self):
         return 53 
 
+    def update_empowerment(self, empowerment):
+        self.empowerment_model.update(empowerment)
+
     def get_state_transition(self, state, joint_action, display_phi=False, motion_planner=None):
         """Gets information about possible transitions for the action.
 
@@ -1123,6 +1134,15 @@ class OvercookedGridworld(object):
         # Resolve interacts first
         sparse_reward_by_agent, shaped_reward_by_agent = self.resolve_interacts(new_state, joint_action, events_infos)
 
+        assert new_state.player_positions == state.player_positions
+        assert new_state.player_orientations == state.player_orientations
+        
+        # Resolve player movements
+        self.resolve_movement(new_state, joint_action)
+
+        # Finally, environment effects
+        self.step_environment_effects(new_state)
+
         # SMIRL modification
         new_state_vec = np.array(self.lossless_state_encoding(new_state))[:, :self.width, :self.height]
         onehot_obs = self.onehot_obs(new_state_vec[0, :, :, :26])
@@ -1135,29 +1155,41 @@ class OvercookedGridworld(object):
             thetas = self.sufficient_statistics()
             prob_st = sst.bernoulli.pmf(onehot_obs, thetas[0])
 
-            prob_st = np.clip(prob_st, 0.05, 0.95) # clip it
-            
+            prob_st = np.clip(prob_st, 0.05, 0.95) #[..., :2]  # clip it
+
             smirl_full_reward = np.log(prob_st)
             smirl_reward = smirl_full_reward.mean()
 
         self.state_vecs.append(onehot_obs)
 
-        assert new_state.player_positions == state.player_positions
-        assert new_state.player_orientations == state.player_orientations
-        
-        # Resolve player movements
-        self.resolve_movement(new_state, joint_action)
+        # Resolve yell action
+        yell_reward = self.resolve_yell(joint_action)
 
-        # Finally, environment effects
-        self.step_environment_effects(new_state)
         infos = {
             "event_infos": events_infos,
             "sparse_reward_by_agent": sparse_reward_by_agent,
             "shaped_reward_by_agent": shaped_reward_by_agent,
             "smirl_reward": smirl_reward,
-            "smirl_full_reward": smirl_full_reward
+            "smirl_full_reward": smirl_full_reward,
+            "yell_reward": yell_reward,
+            "custom_metrics": {
+                "yell_reward": yell_reward
+            }
         }
-        
+
+        # Compute empowerment if specified
+        if self.empowerment_model is not None:
+            cur_state_vec = np.array(self.lossless_state_encoding(state))
+            human_action = self.get_actions(state)[1].index(joint_action[1]) # The human is always the second agent
+            empowerment_reward, empowerment_info = self.empowerment_model.computeReward(cur_state_vec, human_action, new_state_vec)
+            empowerment_reward = empowerment_reward.item()
+
+            assert empowerment_reward == 0
+            infos.update({"empowerment_reward": empowerment_reward})
+            infos.update(empowerment_info)
+            infos["custom_metrics"]["empowerment_reward"] = empowerment_reward
+            infos["custom_metrics"].update(empowerment_info)
+
         if display_phi:
             assert motion_planner is not None, "motion planner must be defined if display_phi is true"
             infos["phi_s"] = self.potential_function(state, motion_planner)
@@ -1314,6 +1346,14 @@ class OvercookedGridworld(object):
         player.remove_object()
 
         return self.get_recipe_value(state, soup.recipe)
+
+    def resolve_yell(self, joint_action):
+        if not self.yell:
+            return 0
+        elif Action.YELL in joint_action:
+            return -10
+        else:
+            return 0
 
     def resolve_movement(self, state, joint_action):
         """Resolve player movement and deal with possible collisions"""

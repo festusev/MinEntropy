@@ -181,12 +181,26 @@ class OvercookedSMIRLModel(OvercookedPPOModel):
     def backbone_forward(self, backbone, obs):
         if next(backbone.parameters()).device != obs.device:
             backbone.to(obs.device)
-        if torch.any(torch.isnan(obs)) or torch.any(torch.isinf(obs)):
-            import pdb; pdb.set_trace()
+
         out = backbone(obs)
         return out
 
 ModelCatalog.register_custom_model("overcooked_smirl_model", OvercookedSMIRLModel)
+
+
+class OvercookedSMIRLXYOnlyModel(OvercookedPPOModel):
+    def _construct_backbone(self) -> nn.Module:
+        return self.construct_default_backbone(override_channels=4)
+
+    def backbone_forward(self, backbone, obs):
+        if next(backbone.parameters()).device != obs.device:
+            backbone.to(obs.device)
+
+        out = backbone(obs[:, [0, 1, 26, 27], ...])
+        return out
+
+ModelCatalog.register_custom_model("overcooked_smirl_xyonly_model", OvercookedSMIRLXYOnlyModel)
+
 
 class OvercookedPPODistributionModel(OvercookedPPOModel, ModelWithDiscriminator):
     """

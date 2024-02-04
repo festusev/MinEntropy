@@ -97,7 +97,7 @@ def load_trainer_config(checkpoint_path: str) -> TrainerConfigDict:
 
     return config
 
-
+import pickle
 def convert_checkpoint(checkpoint_fname: str) -> str:
     """
     RLlib changed the way policies are saved at some point since running most of the
@@ -108,6 +108,7 @@ def convert_checkpoint(checkpoint_fname: str) -> str:
 
     with open(checkpoint_fname, "rb") as checkpoint_file:
         checkpoint_data = cloudpickle.load(checkpoint_file)
+
     worker_data = cloudpickle.loads(checkpoint_data["worker"])
     policy_states: Dict[str, Any] = worker_data["state"]
     if all(("weights" in policy_state) for policy_state in policy_states.values()):

@@ -10,6 +10,7 @@ from bpd.envs.overcooked import (
     evaluate,
     get_littered_start_state_fn,
 )
+from PPOTrainerCustom import PPOTrainerCustom
 from bpd.training_utils import load_trainer
 from overcooked_ai_py.agents.benchmarking import AgentEvaluator
 from overcooked_ai_py.mdp.overcooked_env import OvercookedEnv
@@ -73,7 +74,14 @@ if __name__ == "__main__":
         required=False,
         help="if specified, render the games to this path",
     )
+    parser.add_argument(
+        "--render",
+        action="store_true",
+        help="if specified, render the games to the first checkpoint path"
+    )
+
     parser.add_argument("--no_smirl", action="store_true")
+    parser.add_argument("--yell", action="store_true")
     args = parser.parse_args()
 
     ray.init(
@@ -89,9 +97,13 @@ if __name__ == "__main__":
     num_games: int = args.num_games
     out_path: Optional[str] = args.output_path
     render_path: Optional[str] = args.render_path
+    render: Optional[str] = args.render
+
+    if render is not None:
+        render_path = checkpoint_path_0
 
     trainer_0 = load_trainer(
-        checkpoint_path_0, PPOTrainer, config_overrides={"input": "sampler"}
+        checkpoint_path_0, PPOTrainerCustom, config_overrides={"input": "sampler", "execution_plan": {"train_extras": []}}
     )
 
     trainer_0_policies = list(trainer_0.workers.local_worker().policy_map.policy_specs.keys())
@@ -101,7 +113,7 @@ if __name__ == "__main__":
         assert len(trainer_0_policies) == 1, "Too many policies specified"
 
         trainer_1 = load_trainer(
-            checkpoint_path_1, PPOTrainer, config_overrides={"input": "sampler"}
+            checkpoint_path_1, PPOTrainerCustom, config_overrides={"input": "sampler", "execution_plan": {"train_extras": []}}
         )
         trainer_1_policies = list(trainer_1.workers.local_worker().policy_map.policy_specs.keys())
 
@@ -109,8 +121,8 @@ if __name__ == "__main__":
         policy_0 = trainer_0.get_policy(trainer_0_policies[0])
         policy_1 = trainer_1.get_policy(trainer_1_policies[0])
         
-        # Swap the policies to make a smirl policy always first 
-        if "smirl" in trainer_1_policies[0]:
+        # Swap the policies to make a smirl/contrastive policy always first
+        if "smirl" in trainer_1_policies[0] or "contrastive" in trainer_1_policies[0]:
             policy_0, policy_1 = policy_1, policy_0
             policy_ids = [trainer_1_policies[0], trainer_0_policies[0]]
         else:
@@ -120,7 +132,7 @@ if __name__ == "__main__":
         policy_0 = trainer_0.get_policy(trainer_0_policies[0])
         policy_1 = trainer_0.get_policy(trainer_0_policies[1])
 
-        if "smirl" in trainer_0_policies[1]:
+        if "smirl" in trainer_0_policies[1] or "contrastive" in trainer_0_policies[1]:
             policy_0, policy_1 = policy_1, policy_0
             policy_ids = [trainer_0_policies[1], trainer_0_policies[0]]
         else:
@@ -148,7 +160,8 @@ if __name__ == "__main__":
     mdp_params = {
         "layout_name": layout_name,
         "rew_shaping_params": rew_shaping_params,
-        "smirl": not args.no_smirl
+        "smirl": not args.no_smirl,
+        "yell": args.yell
     }
     eval_params = {
         "ep_length": horizon,
@@ -161,6 +174,7 @@ if __name__ == "__main__":
         env_params=env_params,
     )
     env: OvercookedEnv = evaluator.env
+
     bc_obs_shape = env.featurize_state_mdp(env.mdp.get_standard_start_state())[0].shape
     
     def get_featurize_fn(policy: TorchPolicy):
@@ -168,6 +182,7 @@ if __name__ == "__main__":
             return lambda state: env.featurize_state_mdp(state)
         else:
             return env.lossless_state_encoding_mdp
+
     results = evaluate(
         eval_params=dict(eval_params),
         mdp_params=mdp_params,
@@ -211,7 +226,6 @@ if __name__ == "__main__":
             "mean_return_all": float(np.mean(ep_returns_all)),
         }
     )
-
 
     if render_path:
         # First, render a heatmap of actions

@@ -297,7 +297,7 @@ class OvercookedMultiAgent(MultiAgentEnv):
     bc_observation_space: spaces.Box
 
     # List of all agent types currently supported
-    supported_agents = ["ppo", "bc", "smirl"]
+    supported_agents = ["ppo", "bc", "smirl", "smirl_e", "contrastive_e"]
 
     # Default bc_schedule, includes no bc agent at any time
     bc_schedule = self_play_bc_schedule = [(0, 0), (float("inf"), 0)]
@@ -326,6 +326,7 @@ class OvercookedMultiAgent(MultiAgentEnv):
         base_env: OvercookedEnv,
         reward_shaping_factor=0.0,
         reward_shaping_horizon=0,
+        empowerment_weight=.05,
         agents=["ppo", "ppo"],
         bc_schedule=None,
         share_dense_reward=False,
@@ -357,6 +358,8 @@ class OvercookedMultiAgent(MultiAgentEnv):
         self.featurize_fn_map = {
             "ppo": lambda state: self.base_env.lossless_state_encoding_mdp(state),
             "smirl": lambda state: self.base_env.lossless_state_encoding_mdp(state),
+            "smirl_e": lambda state: self.base_env.lossless_state_encoding_mdp(state),
+            "contrastive_e": lambda state: self.base_env.lossless_state_encoding_mdp(state),
             "bc": lambda state: self.base_env.featurize_state_mdp(state),
         }
         self.agents = agents
@@ -364,6 +367,7 @@ class OvercookedMultiAgent(MultiAgentEnv):
         self._initial_reward_shaping_factor = reward_shaping_factor
         self.reward_shaping_factor = reward_shaping_factor
         self.reward_shaping_horizon = reward_shaping_horizon
+        self.empowerment_weight = empowerment_weight
         self.use_phi = use_phi
         self.share_dense_reward = share_dense_reward
         self.extra_rew_shaping = extra_rew_shaping
@@ -371,12 +375,13 @@ class OvercookedMultiAgent(MultiAgentEnv):
         self.no_regular_reward = no_regular_reward
         self.action_rewards = action_rewards
         self._setup_observation_space()
-        self.action_space = spaces.Discrete(len(Action.ALL_ACTIONS))
+        self.action_space = spaces.Discrete(len(action_rewards)) # len(Action.ALL_ACTIONS))
         self.anneal_bc_factor(0)
         self.reset(regen_mdp=True)
 
+
     def _validate_featurize_fns(self, mapping):
-        assert "ppo" in mapping or "smirl" in mapping, "At least one ppo agent must be specified"
+        assert "ppo" in mapping or "smirl" in mapping or "smirl_e" in mapping, "At least one ppo agent must be specified"
         for k, v in mapping.items():
             assert (
                 k in self.supported_agents
@@ -434,6 +439,8 @@ class OvercookedMultiAgent(MultiAgentEnv):
             return lambda state: self.base_env.lossless_state_encoding_mdp(state)
         if agent_id.startswith("smirl"):
             return lambda state: self.base_env.lossless_state_encoding_mdp(state)
+        if agent_id.startswith("contrastive_e"):
+            return lambda state: self.base_env.lossless_state_encoding_mdp(state)
         if agent_id.startswith("bc"):
             return lambda state: self.base_env.featurize_state_mdp(state)
         raise ValueError("Unsupported agent type {0}".format(agent_id))
@@ -485,6 +492,7 @@ class OvercookedMultiAgent(MultiAgentEnv):
         returns:
             observation: formatted to be standard input for self.agent_idx's policy
         """
+
         prev_state: OvercookedState = copy.deepcopy(self.base_env.state)
         current_timestep = prev_state.timestep
 
@@ -509,7 +517,9 @@ class OvercookedMultiAgent(MultiAgentEnv):
                 joint_action, display_phi=False
             )
             dense_reward = info["shaped_r_by_agent"]
+
         smirl_reward = info["smirl_reward"]
+        yell_reward = info["yell_reward"]
         ob_p0, ob_p1 = self._get_obs(next_state)
 
         # Add some extra reward shaping.
@@ -533,7 +543,14 @@ class OvercookedMultiAgent(MultiAgentEnv):
 
         # Caculate some extra custom metrics.
         prev_player_state: PlayerState
-        info["custom_metrics"] = {}
+        # info["custom_metrics"]["empowerment_classifier_loss"] = info["empowerment_classifier_loss"]
+
+        #for i in range(len(info["true_classified"])):
+        #    info["custom_metrics"][f"tc_{i}"] = info["true_classified"][i]
+        #    info["custom_metrics"][f"nc_{i}"] = info["null_classified"][i]
+
+        # print(info["empowerment_classifier_loss"])
+
         smirl_full_reward = np.mean(info["smirl_full_reward"], axis=(0, 1))
         for i in range(len(smirl_full_reward)):
             info["custom_metrics"]["smirl_" + str(i)] = smirl_full_reward[i]
@@ -553,11 +570,14 @@ class OvercookedMultiAgent(MultiAgentEnv):
                     ] = 1
 
         shaped_reward = [sparse_reward, sparse_reward]
+
         for agent_index in range(2):
             if self.share_dense_reward:
                 agent_dense_reward = sum(dense_reward)
             else:
                 agent_dense_reward = dense_reward[agent_index]
+            info["custom_metrics"][f"agent_{agent_index}_sparse"] = shaped_reward[agent_index]
+            info["custom_metrics"][f"agent_{agent_index}_dense"] = agent_dense_reward
             shaped_reward[agent_index] += (
                 self.reward_shaping_factor * agent_dense_reward
             )
@@ -571,12 +591,20 @@ class OvercookedMultiAgent(MultiAgentEnv):
         for agent_index in range(2):
             if "smirl" in self.curr_agents[agent_index]:
                 shaped_reward[agent_index] = smirl_reward
+                shaped_reward[agent_index] += yell_reward
+            if "smirl_e" in self.curr_agents[agent_index]:
+                empowerment_reward = info["empowerment_reward"]
+                shaped_reward[agent_index] += self.empowerment_weight*empowerment_reward
+            if "contrastive" in self.curr_agents[agent_index]:
+                empowerment_reward = info["empowerment_reward"]
+                shaped_reward[agent_index] = self.empowerment_weight*empowerment_reward
 
         obs = {self.curr_agents[0]: ob_p0, self.curr_agents[1]: ob_p1}
         rewards = {
             self.curr_agents[0]: shaped_reward[0],
             self.curr_agents[1]: shaped_reward[1],
         }
+
         dones = {self.curr_agents[0]: done, self.curr_agents[1]: done, "__all__": done}
         infos = {self.curr_agents[0]: info.copy(), self.curr_agents[1]: info.copy()}
 

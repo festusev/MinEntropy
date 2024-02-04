@@ -1,8 +1,8 @@
+import numpy as np
 import argparse
 import os
 from typing import Callable, List, cast
 
-import numpy as np
 import ray
 import torch
 from bpd.envs.overcooked import (
@@ -27,9 +27,10 @@ from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.typing import MultiAgentPolicyConfigDict, TrainerConfigDict
 from typing_extensions import Literal
-from Empowerment import ClassifierEmpowerment, TwoHeadedEmpowerment, MIMIEmpowerment, ContrastiveEmpowerment
+from Empowerment import ClassifierEmpowerment, TwoHeadedEmpowerment, MIMIEmpowerment
 from PPOTrainerCustom import TrainCustomOneStep
 import ray
+
 
 def get_obs_shape_from_layout(layout_name):
     layout_dict = read_layout_dict(layout_name)
@@ -38,31 +39,9 @@ def get_obs_shape_from_layout(layout_name):
 
     return len(grid[0]), len(grid)
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--layout_name",
-        type=str,
-        required=True,
-    )
-    parser.add_argument("--seed", type=int, default=np.random.randint(1000, high=100000))
-    parser.add_argument("--num_training_iters", type=int, default=200)
-    parser.add_argument("--log_dir", type=str, default="data/logs")
-    parser.add_argument("--experiment_tag", type=str, required=False)
-    parser.add_argument("--human_model_checkpoint", type=str, required=False)
-    parser.add_argument("--num_littered_objects", type=int, default=0)
-    # parser.add_argument("--smirl", action="store_true")
-    parser.add_argument("--model_0", type=str, required=True) # "ppo", "smirl", "smirl_e", "contrastive_e" or a model checkpoint
-    parser.add_argument("--model_1", type=str)
-    parser.add_argument("--train_both", action="store_true") # We always train model 0, but this is if we want to train model 1
-    parser.add_argument("--no_anneal", action="store_true")
-    parser.add_argument("--empowerment_weight", type=float, default=1)
-    parser.add_argument("--yell", action="store_true")
-    args = parser.parse_args()
 
-    NUM_ACTIONS = Action.NUM_ACTIONS  #+ int(args.yell) - 1
-
-# Environment
+def train(args, policies_to_train):
+    # Environment
     layout_name = args.layout_name
     rew_shaping_params = {
         "PLACEMENT_IN_POT_REW": 3,
@@ -75,7 +54,7 @@ if __name__ == "__main__":
     dispense_reward = 0
     horizon = 400
     no_regular_reward = False
-    action_rewards = [0] * NUM_ACTIONS
+    action_rewards = [0] * Action.NUM_ACTIONS
 
     num_littered_objects = args.num_littered_objects
     start_state_fn = get_littered_start_state_fn(
@@ -138,54 +117,44 @@ if __name__ == "__main__":
 
     policy_ids = [args.model_0]
     multiagent_mode = False
-    if args.model_1: # There is a second model
+    if args.model_1:  # There is a second model
         multiagent_mode = True
         policy_ids.append(args.model_1)
 
     model_configs = []
 
-    empowerment_weight = args.empowerment_weight
+    empowerment_weight = 0
     compute_empowerment = False
     compute_smirl = False
     for i in range(len(policy_ids)):
         model = policy_ids[i]
-        if model == "ppo": # Training a PPO agent from scratch
+        if model == "ppo":  # Training a PPO agent from scratch
             model_configs.append({"model": {
-                    "custom_model": "overcooked_ppo_model",
-                    "max_seq_len": max_seq_len,
-                    "custom_model_config": custom_model_config,
-                    "vf_share_layers": vf_share_layers,
-                    "use_lstm": use_lstm,
-                    "lstm_cell_size": lstm_cell_size,
-                    "use_attention": use_attention,
-                }})
-        elif model == "smirl" or model == "smirl_e": # Training a SMIRL agent from scratch
-            model_configs.append({"model":{
-                    "custom_model": "overcooked_smirl_model",
-                    "max_seq_len": max_seq_len,
-                    "custom_model_config": custom_model_config,
-                    "vf_share_layers": vf_share_layers,
-                    "use_lstm": use_lstm,
-                    "lstm_cell_size": lstm_cell_size,
-                    "use_attention": use_attention,
-                }})
+                "custom_model": "overcooked_ppo_model",
+                "max_seq_len": max_seq_len,
+                "custom_model_config": custom_model_config,
+                "vf_share_layers": vf_share_layers,
+                "use_lstm": use_lstm,
+                "lstm_cell_size": lstm_cell_size,
+                "use_attention": use_attention,
+            }})
+        elif model == "smirl" or model == "smirl_e":  # Training a SMIRL agent from scratch
+            model_configs.append({"model": {
+                "custom_model": "overcooked_smirl_model",
+                "max_seq_len": max_seq_len,
+                "custom_model_config": custom_model_config,
+                "vf_share_layers": vf_share_layers,
+                "use_lstm": use_lstm,
+                "lstm_cell_size": lstm_cell_size,
+                "use_attention": use_attention,
+            }})
             compute_smirl = True
-            compute_empowerment = compute_empowerment or "smirl_e" == model
-        elif model == "contrastive_e":
-            model_configs.append({"model":{
-                    "custom_model": "overcooked_smirl_model",
-                    "max_seq_len": max_seq_len,
-                    "custom_model_config": custom_model_config,
-                    "vf_share_layers": vf_share_layers,
-                    "use_lstm": use_lstm,
-                    "lstm_cell_size": lstm_cell_size,
-                    "use_attention": use_attention,
-                }})
-            compute_empowerment = True
-        else: # Loading a model from checkpoint
+            compute_empowerment = "smirl_e" == model
+
+        else:  # Loading a model from checkpoint
             checkpoint = load_trainer_config(model)
             loaded_policy_dict: MultiAgentPolicyConfigDict = (checkpoint["multiagent"]["policies"])
-            
+
             loaded_policy_ids = list(loaded_policy_dict.keys())
             for loaded_policy_id in loaded_policy_ids:
                 (
@@ -194,13 +163,14 @@ if __name__ == "__main__":
                     loaded_policy_action_space,
                     loaded_policy_config,
                 ) = loaded_policy_dict[loaded_policy_id]
-                
+
                 model_configs.append(loaded_policy_config)
                 model = loaded_policy_id
+
             policy_ids = loaded_policy_ids
             break
 
-        if i==0:
+        if i == 0:
             model += "_0"
         elif model + "_0" == policy_ids[0]:
             model += "_1"
@@ -208,7 +178,7 @@ if __name__ == "__main__":
             model += "_0"
         policy_ids[i] = model
 
-    device = torch.device("cpu") # torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cpu")  # torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     obs_shape = get_obs_shape_from_layout(layout_name)
 
@@ -224,16 +194,16 @@ if __name__ == "__main__":
 
             return setter
 
-        empowerment_model = ContrastiveEmpowerment(num_actions=NUM_ACTIONS, in_channels=26, obs_shape=obs_shape, device=device)
-        # empowerment_model = MIMIEmpowerment(num_actions=NUM_ACTIONS, in_channels=26, obs_shape=obs_shape, device=device)
-        #ClassifierEmpowerment(num_actions=Action.NUM_ACTIONS, in_channels=26, obs_shape=obs_shape, device=device)
+
+        empowerment_model = MIMIEmpowerment(num_actions=Action.NUM_ACTIONS, in_channels=26, obs_shape=obs_shape,
+                                            device=device)
+        # ClassifierEmpowerment(num_actions=Action.NUM_ACTIONS, in_channels=26, obs_shape=obs_shape, device=device)
         train_extras.append({"train": empowerment_model, "callback": get_empowerment_setter})
 
     if compute_empowerment:
         pass
         # train_custom_one_step.callback = train_custom_callback
         # train_custom_callback(trainer.workers)
-
 
     env_id = "overcooked_multi_agent"
     env_config = {
@@ -242,8 +212,7 @@ if __name__ == "__main__":
             "layout_name": layout_name,
             "rew_shaping_params": rew_shaping_params,
             "empowerment_model": empowerment_model,
-            "smirl": compute_smirl,
-            "yell": args.yell
+            "smirl": compute_smirl
         },
         # To be passed into OvercookedEnv constructor
         "env_params": {
@@ -284,15 +253,13 @@ if __name__ == "__main__":
     if multiagent_mode:
         policy_mapping_fn = lambda agent_id, *args, **kwargs: cast(str, agent_id)
         env.agents = policy_ids[:]
-    else: # We are doing self-play
+    else:  # We are doing self-play
         env.agents = policy_ids[:]
         policy_ids.append(policy_ids[0][:-2] + "_1")
         policy_mapping_fn = lambda agent_id, *args, **kwargs: policy_ids[0]
 
-    policies_to_train = [policy_ids[0]]
-    if args.train_both:
-        policies_to_train.append(policy_ids[1])
 
+    policies_to_train = policies_to_train[:1]
 
     config: TrainerConfigDict = {  # noqa: F841
         "env": env_id,
@@ -349,12 +316,6 @@ if __name__ == "__main__":
     if "disable_env_checking" in COMMON_CONFIG:
         config["disable_env_checking"] = True
 
-    ray.init(
-        num_cpus=5,
-        ignore_reinit_error=True,
-        include_dashboard=False,
-    )
-
     trainer = PPOTrainerCustom(
         config,
         logger_creator=build_logger_creator(
@@ -374,3 +335,50 @@ if __name__ == "__main__":
 
     checkpoint = trainer.save()
     print(f"Saved final checkpoint to {checkpoint}")
+    return checkpoint
+
+if __name__ == "__main__":
+    ray.init(
+        num_cpus=5,
+        ignore_reinit_error=True,
+        include_dashboard=False,
+    )
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--layout_name",
+        type=str,
+        required=True,
+    )
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--num_training_iters", type=int, default=200)
+    parser.add_argument("--log_dir", type=str, default="data/logs")
+    parser.add_argument("--experiment_tag", type=str, required=False)
+    parser.add_argument("--human_model_checkpoint", type=str, required=False)
+    parser.add_argument("--num_littered_objects", type=int, default=0)
+    # parser.add_argument("--smirl", action="store_true")
+    parser.add_argument("--model_0", type=str, required=True)  # "ppo", "smirl", "smirl_e" or a model checkpoint
+    parser.add_argument("--model_1", type=str)
+    parser.add_argument("--train_both",
+                        action="store_true")  # We always train model 0, but this is if we want to train model 1
+    parser.add_argument("--no-anneal", action="store_true")
+    parser.add_argument("--training_switches", type=int, default=5)
+
+    args = parser.parse_args()
+    args.train_both = False
+
+    policies_to_train = [args.model_0 + "_0", args.model_1 + ("_0" if args.model_0 != args.model_1 else "_1")]
+    all_checkpoints = []
+    for i in range(args.training_switches):
+        print(f"\n\n\n{i}. TRAINING {policies_to_train[0]} with {policies_to_train[1]} held fixed\n\n\n")
+        args.experiment_tag = f"{i}_"
+
+        checkpoint = train(args, policies_to_train)
+        all_checkpoints.append(checkpoint)
+
+        args.model_0 = args.model_1
+        args.model_1 = checkpoint
+
+        policies_to_train = policies_to_train[::-1]
+
+        np.save(checkpoint + "_sequential", all_checkpoints)
