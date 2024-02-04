@@ -372,7 +372,8 @@ if __name__ == "__main__":
             checkpoint = trainer.save()
 
             if empowerment_model is not None:
-                empowerment_model.save_to_folder(os.path.join(checkpoint, "empowerment_model"))
+                checkpoint_dir = os.path.dirname(checkpoint)
+                empowerment_model.save_to_folder(os.path.join(checkpoint_dir, "empowerment_model"))
 
             print(f"Saved checkpoint to {checkpoint}")
 
