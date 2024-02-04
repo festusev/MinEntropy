@@ -62,7 +62,7 @@ if __name__ == "__main__":
 
     NUM_ACTIONS = Action.NUM_ACTIONS  #+ int(args.yell) - 1
 
-# Environment
+    # Environment
     layout_name = args.layout_name
     rew_shaping_params = {
         "PLACEMENT_IN_POT_REW": 3,
