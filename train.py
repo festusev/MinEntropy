@@ -1,6 +1,6 @@
 import argparse
 import os
-from typing import Callable, List, cast
+from typing import Callable, List, cast, Dict
 
 import numpy as np
 import ray
@@ -31,6 +31,9 @@ from Empowerment import ClassifierEmpowerment, TwoHeadedEmpowerment, MIMIEmpower
 from PPOTrainerCustom import TrainCustomOneStep
 import ray
 
+import wandb
+wandb.login()
+
 def get_obs_shape_from_layout(layout_name):
     layout_dict = read_layout_dict(layout_name)
     grid = layout_dict["grid"]
@@ -58,7 +61,16 @@ if __name__ == "__main__":
     parser.add_argument("--no_anneal", action="store_true")
     parser.add_argument("--empowerment_weight", type=float, default=1)
     parser.add_argument("--yell", action="store_true")
+    parser.add_argument("--no_wandb", action="store_true")
+    parser.add_argument("--goal_prob", type=float, default=0.2)
     args = parser.parse_args()
+
+    if not args.no_wandb:
+        run = wandb.init(project="Entropy",
+                         config={}) # TODO: Add config
+    else:
+        run = wandb.init(project="Entropy",
+                         config={}, mode="disabled") # TODO: Add config
 
     NUM_ACTIONS = Action.NUM_ACTIONS  #+ int(args.yell) - 1
 
@@ -224,10 +236,42 @@ if __name__ == "__main__":
 
             return setter
 
-        empowerment_model = ContrastiveEmpowerment(num_actions=NUM_ACTIONS, in_channels=26, obs_shape=obs_shape, device=device)
+        empowerment_model = ContrastiveEmpowerment(num_actions=NUM_ACTIONS, in_channels=26, obs_shape=obs_shape, device=device,
+                                                   prob=args.goal_prob)
         # empowerment_model = MIMIEmpowerment(num_actions=NUM_ACTIONS, in_channels=26, obs_shape=obs_shape, device=device)
         #ClassifierEmpowerment(num_actions=Action.NUM_ACTIONS, in_channels=26, obs_shape=obs_shape, device=device)
         train_extras.append({"train": empowerment_model, "callback": get_empowerment_setter})
+
+    class DummyWrapper:
+        def __init__(self, empowerment_model):
+            self.empowerment_model = empowerment_model
+        def __call__(self, sample_batches: Dict):
+            self.sample_batches = sample_batches
+
+    def get_wandb_callback(wrapper: DummyWrapper):
+        empowerment_model = wrapper.empowerment_model
+        sample_batches = wrapper.sample_batches
+
+        def foreach(env):
+            pass
+
+        wandb_info = empowerment_model.info
+        optim_param_groups = empowerment_model.optim.param_groups[0]
+        optim_info = {
+            "betas": optim_param_groups["betas"],
+            "lr": optim_param_groups["lr"]
+        }
+        wandb_info.update(optim_info)
+
+        for agent_name in sample_batches.keys():
+            wandb_info[f"{agent_name}_reward_mean"] = sample_batches[agent_name]["rewards"].mean().item()
+
+        wandb.log(wandb_info)
+
+        return foreach
+
+    # Add in the Wandb train extra
+    train_extras.append({"train": DummyWrapper(empowerment_model)}) #, "callback": get_wandb_callback})
 
     if compute_empowerment:
         pass
@@ -360,7 +404,7 @@ if __name__ == "__main__":
         logger_creator=build_logger_creator(
             log_dir,
             experiment_name,
-        ),
+        )
     )
 
     result = None
@@ -379,3 +423,5 @@ if __name__ == "__main__":
 
     checkpoint = trainer.save()
     print(f"Saved final checkpoint to {checkpoint}")
+
+    wandb.finish()

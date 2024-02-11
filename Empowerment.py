@@ -54,7 +54,7 @@ class Empowerment(ABC):
         return self.modelUpdate(sample_batches)
 
 class ContrastiveEmpowerment(Empowerment):
-    def __init__(self, num_actions, in_channels, obs_shape, device, z_dim = 16):
+    def __init__(self, num_actions, in_channels, obs_shape, device, prob=0.2, z_dim = 16):
         super().__init__(in_channels, device)
 
         self.num_actions = num_actions
@@ -72,7 +72,7 @@ class ContrastiveEmpowerment(Empowerment):
         self.info = {"empowerment_classifier_loss": 0, "contrastive_empowerment_rewards": 0}
         self.buffer = SimpleBuffer(max_size=100000)
 
-        self.prob = 0.2
+        self.prob = prob
 
 
     def train(self):
@@ -109,7 +109,7 @@ class ContrastiveEmpowerment(Empowerment):
         null_loss = self.bce_loss(nn.functional.sigmoid(null_dotted), torch.zeros(n))
         loss = true_loss + null_loss
 
-        return loss
+        return loss, {"true_loss": true_loss.item(), "null_loss": null_loss.item()}
 
     def rewardFromBatch(self, human_batch):
         self.eval()
@@ -148,7 +148,7 @@ class ContrastiveEmpowerment(Empowerment):
         empowerment_batch["rewards"] = empowerment_rewards
 
         train_batch = self.getBatch(1024) # 256
-        loss = self.getLoss(train_batch)
+        loss, loss_info = self.getLoss(train_batch)
 
         loss.backward()
 
@@ -158,7 +158,10 @@ class ContrastiveEmpowerment(Empowerment):
         self.optim.step()
         self.optim.zero_grad()
 
-        self.info = {"empowerment_classifier_loss": loss.item(), "contrastive_empowerment_rewards": empowerment_rewards.detach().numpy().mean()}
+        self.info = {"empowerment_classifier_loss": loss.item(),
+                     "contrastive_empowerment_rewards": empowerment_rewards.detach().numpy().mean()}
+        self.info.update(loss_info)
+
         return loss
 
     def getBatch(self, batch_size) -> Dict:
