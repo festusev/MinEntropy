@@ -19,7 +19,6 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray import cloudpickle
 
-
 class OvercookedPPOModel(TorchModelV2, nn.Module):
     def __init__(
         self,
@@ -183,6 +182,9 @@ class OvercookedSMIRLModel(OvercookedPPOModel):
             backbone.to(obs.device)
 
         out = backbone(obs)
+        if any([param.isnan().any() for param in self.parameters()]) or torch.any(torch.isnan(out)) or torch.any(torch.isinf(out)):
+            import pdb; pdb.set_trace()
+
         return out
 
 ModelCatalog.register_custom_model("overcooked_smirl_model", OvercookedSMIRLModel)

@@ -116,7 +116,6 @@ class Hook:
         self.trainer = trainer
 
     def __call__(self, batch: SampleBatchType) -> SampleBatchType:
-        import pdb; pdb.set_trace()
         return self.trainer(batch)
 
 class PPOTrainerCustom(PPOTrainer):
