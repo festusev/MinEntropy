@@ -154,6 +154,9 @@ class PPOTrainerCustom(PPOTrainer):
             rollouts = rollouts.for_each(
                 TrainCustomOneStep(workers=workers, **extra))
 
+        # Normalize reward
+        rollouts = rollouts.for_each(StandardizeFields(["rewards"]))
+
         # Standardize advantages.
         rollouts = rollouts.for_each(StandardizeFields(["advantages"]))
 

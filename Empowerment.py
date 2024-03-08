@@ -145,7 +145,9 @@ class ContrastiveEmpowerment(Empowerment):
         self.buffer.add(human_batch)
 
         empowerment_rewards = self.rewardFromBatch(human_batch)
-        empowerment_batch["rewards"] = empowerment_rewards
+
+        if empowerment_batch is not None:
+            empowerment_batch["rewards"] = empowerment_rewards
 
         train_batch = self.getBatch(1024) # 256
         loss, loss_info = self.getLoss(train_batch)
