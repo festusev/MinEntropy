@@ -8,10 +8,11 @@ from ReplayBuffers import ActionReplayBuffer, SimpleBuffer
 import numpy as np
 from abc import ABC, abstractmethod, abstractproperty
 
+
 def rowwise_cosine_similarity(t1: torch.tensor, t2: torch.tensor, temperature: nn.Parameter):
     dotted = torch.sum((t1 * t2).flatten(end_dim=-2), dim=-1)
-    norm_dotted = dotted/(torch.norm(t1, dim=1) * torch.norm(t2, dim=1))
-    return norm_dotted*temperature
+    norm_dotted = dotted / (torch.norm(t1, dim=1) * torch.norm(t2, dim=1))
+    return norm_dotted * temperature
 
 
 class Empowerment(ABC):
@@ -48,20 +49,22 @@ class Empowerment(ABC):
         pass
 
     def convertObs(self, obs):
-        return torch.tensor(obs[..., :self.in_channels].transpose((0, -1, 1, 2)), dtype=torch.float32, device=self.device)
+        return torch.tensor(obs[..., :self.in_channels].transpose((0, -1, 1, 2)), dtype=torch.float32,
+                            device=self.device)
 
     def __call__(self, sample_batches: List[SampleBatchType]) -> Tuple[float, float]:
         return self.modelUpdate(sample_batches)
 
+
 class ContrastiveEmpowerment(Empowerment):
-    def __init__(self, num_actions, in_channels, obs_shape, device, prob=0.2, z_dim = 16):
+    def __init__(self, num_actions, in_channels, obs_shape, device, prob=0.2, z_dim=16):
         super().__init__(in_channels, device)
 
         self.num_actions = num_actions
         self.z_dim = z_dim
         self.sa_encoder: nn.Module = SAEncoder(in_channels, z_dim)
         self.g_encoder: nn.Module = SEncoder(in_channels, z_dim)
-        self.temperature: nn.Module = nn.Parameter(torch.tensor(1, requires_grad=True, dtype=torch.float32))
+        self.temperature: nn.Parameter = nn.Parameter(torch.tensor(1, requires_grad=True, dtype=torch.float32))
 
         self.sa_encoder.to(device)
         self.g_encoder.to(device)
@@ -73,7 +76,6 @@ class ContrastiveEmpowerment(Empowerment):
         self.buffer = SimpleBuffer(max_size=100000)
 
         self.prob = prob
-
 
     def train(self):
         self.sa_encoder.train()
@@ -149,7 +151,7 @@ class ContrastiveEmpowerment(Empowerment):
         if empowerment_batch is not None:
             empowerment_batch["rewards"] = empowerment_rewards
 
-        train_batch = self.getBatch(1024) # 256
+        train_batch = self.getBatch(1024)  # 256
         loss, loss_info = self.getLoss(train_batch)
 
         loss.backward()
@@ -180,11 +182,10 @@ class ContrastiveEmpowerment(Empowerment):
         # We compute reward later, after all the rollout workers have finished
         return torch.tensor(0), self.info
 
-    def update(self, empowerment: Empowerment):
+    def update(self, empowerment: "ContrastiveEmpowerment"):
         self.info = empowerment.info
         self.sa_encoder = empowerment.sa_encoder
         self.g_encoder = empowerment.g_encoder
-
 
     def save_to_folder(self, folder):
         import os
@@ -267,7 +268,7 @@ class SAEncoder(nn.Module):
         )
 
         self.action_model = nn.Sequential(
-            nn.Linear(self.num_actions, 16), # There are several actions, so we one-hot encode them
+            nn.Linear(self.num_actions, 16),  # There are several actions, so we one-hot encode them
             nn.LeakyReLU(),
             nn.Linear(16, 64),
             nn.LeakyReLU()
@@ -280,7 +281,6 @@ class SAEncoder(nn.Module):
             nn.LeakyReLU(),
             nn.Linear(1024, z_dim)
         )
-
 
     def forward(self, state, action):
         action = F.one_hot(action, num_classes=self.num_actions).to(torch.float32)
@@ -400,19 +400,21 @@ class MIMIEmpowerment(Empowerment):
         return loss
 
     def I_tuba(self, obs, actions, new_obs, null_actions):
-        obs = torch.tensor(obs[..., :self.in_channels].transpose((0, -1, 1, 2)), dtype=torch.float32, device=self.device)
-        new_obs = torch.tensor(new_obs[..., :self.in_channels].transpose((0, -1, 1, 2)), dtype=torch.float32, device=self.device)
+        obs = torch.tensor(obs[..., :self.in_channels].transpose((0, -1, 1, 2)), dtype=torch.float32,
+                           device=self.device)
+        new_obs = torch.tensor(new_obs[..., :self.in_channels].transpose((0, -1, 1, 2)), dtype=torch.float32,
+                               device=self.device)
 
-        actions = torch.tensor(actions, device=self.device) #, dtype=torch.float32)
-        null_actions = torch.tensor(null_actions, device=self.device) #, dtype=torch.float32)
+        actions = torch.tensor(actions, device=self.device)  # , dtype=torch.float32)
+        null_actions = torch.tensor(null_actions, device=self.device)  # , dtype=torch.float32)
 
         T = self.T(obs, new_obs)
         a = self.a(obs, new_obs)
 
-        T_true = T[np.arange(T.shape[0]), actions] #T[:, actions]
-        T_null = T[np.arange(T.shape[0]), null_actions] # T[:, null_actions]
+        T_true = T[np.arange(T.shape[0]), actions]  # T[:, actions]
+        T_null = T[np.arange(T.shape[0]), null_actions]  # T[:, null_actions]
 
-        rhs = torch.mean(torch.exp(T_null)/torch.exp(a) + a - 1, dim=1)
+        rhs = torch.mean(torch.exp(T_null) / torch.exp(a) + a - 1, dim=1)
 
         I_tuba = T_true - rhs
 
@@ -461,7 +463,8 @@ class ClassifierEmpowerment(Empowerment):
         for action in range(self.num_actions):
             action_batch: SimpleBuffer = self.humanBuffer.sample(num_items, action)
 
-            null_indices = torch.randperm(num_items) #np.roll(np.arange(num_items), np.random.randint(1, num_items - 1))
+            null_indices = torch.randperm(
+                num_items)  # np.roll(np.arange(num_items), np.random.randint(1, num_items - 1))
             null_obs = action_batch.new_obs[null_indices]
             null_batch = SimpleBuffer(action_batch.obs, action_batch.actions, null_obs)
 
@@ -482,7 +485,8 @@ class ClassifierEmpowerment(Empowerment):
         self.optim.step()
         self.optim.zero_grad()
 
-        self.info = {"empowerment_classifier_loss": loss.item(), "true_classified": true_classified.cpu().detach().numpy(),
+        self.info = {"empowerment_classifier_loss": loss.item(),
+                     "true_classified": true_classified.cpu().detach().numpy(),
                      "null_classified": null_classified.cpu().detach().numpy()}
 
         return loss
@@ -499,10 +503,12 @@ class ClassifierEmpowerment(Empowerment):
         return loss, true_classified, null_classified
 
     def classify(self, obs, actions, new_obs):
-        obs = torch.tensor(obs[..., :self.in_channels].transpose((0, -1, 1, 2)), dtype=torch.float32, device=self.device)
-        new_obs = torch.tensor(new_obs[..., :self.in_channels].transpose((0, -1, 1, 2)), dtype=torch.float32, device=self.device)
+        obs = torch.tensor(obs[..., :self.in_channels].transpose((0, -1, 1, 2)), dtype=torch.float32,
+                           device=self.device)
+        new_obs = torch.tensor(new_obs[..., :self.in_channels].transpose((0, -1, 1, 2)), dtype=torch.float32,
+                               device=self.device)
 
-        actions = torch.tensor(actions, device=self.device) #, dtype=torch.float32)
+        actions = torch.tensor(actions, device=self.device)  # , dtype=torch.float32)
 
         return self.classifier(obs, actions, new_obs)
 
@@ -518,11 +524,12 @@ class ClassifierEmpowerment(Empowerment):
         self.info = empowerment.info
         self.classifier = empowerment.classifier
 
+
 class JointState(nn.Module):
     # Learns (s_t s_{t+1}) -> 1
     def __init__(self, in_channels, obs_shape):
         super().__init__()
-        self.in_channels = 2*in_channels
+        self.in_channels = 2 * in_channels
         self.obs_shape = obs_shape
 
         self.conv = nn.Sequential(
@@ -543,13 +550,13 @@ class JointState(nn.Module):
             nn.Linear(16, 1)
         )
 
-
     def forward(self, obs, new_obs):
         full_obs = torch.cat([obs, new_obs], dim=1)
         z = self.conv(full_obs)
         z = z.flatten(start_dim=1)
 
         return self.mlp(z)
+
 
 class ActionConditional(nn.Module):
     # st, st+1 -> a
@@ -573,7 +580,7 @@ class ActionConditional(nn.Module):
         encoder_output_dim = self.encoder(dummy_input).flatten().shape[0]
 
         self.mlp = nn.Sequential(
-            nn.Linear(encoder_output_dim*2, 16),
+            nn.Linear(encoder_output_dim * 2, 16),
             nn.ReLU(),
             nn.Linear(16, num_actions)
         )
@@ -589,7 +596,7 @@ class ActionConditional(nn.Module):
 
 
 class TransitionClassifier(nn.Module):
-    def __init__(self,  num_actions, in_channels, obs_shape):
+    def __init__(self, num_actions, in_channels, obs_shape):
         super().__init__()
         self.num_actions = num_actions
         self.in_channels = in_channels
@@ -613,9 +620,8 @@ class TransitionClassifier(nn.Module):
             nn.Linear(16, encoder_output_dim)
         )
 
-
     def forward(self, obs, action, new_obs):
-        action = torch.nn.functional.one_hot(action, num_classes = self.num_actions)
+        action = torch.nn.functional.one_hot(action, num_classes=self.num_actions)
         action = action.to(torch.float32)
 
         obs_encoded = self.encoder(obs).flatten(start_dim=1)
@@ -626,6 +632,7 @@ class TransitionClassifier(nn.Module):
         difference = torch.linalg.norm(obs_encoded + action_encoded - new_obs_encoded, dim=1)
 
         return -difference
+
 
 class TwoHeadedEmpowerment(Empowerment):
     def __init__(self, in_channels, device):
@@ -668,14 +675,16 @@ class TwoHeadedEmpowerment(Empowerment):
         sm_loss = 0
         tr_loss = 0
         for batch in sample_batches:
-            obs = torch.tensor(batch["obs"][..., :self.in_channels].transpose((0, -1, 1, 2)), device=self.device, dtype=torch.float32)
-            new_obs = torch.tensor(batch["new_obs"][..., :self.in_channels].transpose((0, -1, 1, 2)), device=self.device, dtype=torch.float32)
+            obs = torch.tensor(batch["obs"][..., :self.in_channels].transpose((0, -1, 1, 2)), device=self.device,
+                               dtype=torch.float32)
+            new_obs = torch.tensor(batch["new_obs"][..., :self.in_channels].transpose((0, -1, 1, 2)),
+                                   device=self.device, dtype=torch.float32)
             new_obs = new_obs.flatten(2)
 
             sm_prob = self.state_marginal(obs)
             sm_loss += self.loss(sm_prob.flatten(2), new_obs)
 
-            action = torch.tensor(batch["actions"], dtype=torch.int64, device=self.device) #.reshape(-1, 1)
+            action = torch.tensor(batch["actions"], dtype=torch.int64, device=self.device)  # .reshape(-1, 1)
 
             tr_prob = self.transition(obs, action)
             tr_loss += self.loss(tr_prob.flatten(2), new_obs)
@@ -683,8 +692,9 @@ class TwoHeadedEmpowerment(Empowerment):
         return sm_loss, tr_loss
 
     def computeReward(self, obs, action, new_obs):
-        obs = torch.tensor(obs[..., :self.in_channels].transpose((0, -1, 1, 2)), dtype=torch.float32, device=self.device)
-        action = torch.tensor([action], device=self.device) #, dtype=torch.float32)
+        obs = torch.tensor(obs[..., :self.in_channels].transpose((0, -1, 1, 2)), dtype=torch.float32,
+                           device=self.device)
+        action = torch.tensor([action], device=self.device)  # , dtype=torch.float32)
 
         self.eval()
 
@@ -736,6 +746,7 @@ class StateMarginal(nn.Module):
     def forward(self, state):
         return self.model(state)
 
+
 class Transition(nn.Module):
     # Learns P(s_{t+1} | a_t, s_t)
     num_actions = 6
@@ -753,7 +764,7 @@ class Transition(nn.Module):
         )
 
         self.action_model = nn.Sequential(
-            nn.Linear(self.num_actions, 16), # There are 6 actions, so we one-hot encode them
+            nn.Linear(self.num_actions, 16),  # There are 6 actions, so we one-hot encode them
             nn.ReLU(),
             nn.Linear(16, 64),
             nn.ReLU()

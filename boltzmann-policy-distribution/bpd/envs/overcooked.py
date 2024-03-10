@@ -57,11 +57,11 @@ class RlLibAgent(Agent):
     current_human_data: Optional[SampleBatch]
 
     def __init__(
-        self,
-        policy: TorchPolicy,
-        agent_index,
-        featurize_fn,
-        human_data_to_condition_on: Optional[List[SampleBatch]] = None,
+            self,
+            policy: TorchPolicy,
+            agent_index,
+            featurize_fn,
+            human_data_to_condition_on: Optional[List[SampleBatch]] = None,
     ):
         self.policy = policy
         self.agent_index = agent_index
@@ -128,7 +128,7 @@ class RlLibAgent(Agent):
         self.other_player_action = Action.ACTION_TO_INDEX[action]
 
     def _add_dim_to_obs(
-        self, obs: Union[Tuple[np.ndarray, ...], np.ndarray]
+            self, obs: Union[Tuple[np.ndarray, ...], np.ndarray]
     ) -> Union[Tuple[np.ndarray, ...], np.ndarray]:
         if isinstance(obs, tuple):
             return tuple(obs_part[np.newaxis] for obs_part in obs)
@@ -136,7 +136,7 @@ class RlLibAgent(Agent):
             return obs[np.newaxis]
 
     def _compute_action_helper(
-        self, state: OvercookedState, store_prev_obs=False
+            self, state: OvercookedState, store_prev_obs=False
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         obs = self.featurize(state)
         my_obs = obs[self.agent_index]
@@ -322,20 +322,20 @@ class OvercookedMultiAgent(MultiAgentEnv):
     }
 
     def __init__(
-        self,
-        base_env: OvercookedEnv,
-        reward_shaping_factor=0.0,
-        reward_shaping_horizon=0,
-        empowerment_weight=.05,
-        agents=["ppo", "ppo"],
-        bc_schedule=None,
-        share_dense_reward=False,
-        extra_rew_shaping=DEFAULT_CONFIG["multi_agent_params"]["extra_rew_shaping"],
-        use_phi=True,
-        regen_mdp=False,
-        no_regular_reward=False,
-        action_rewards: List[float] = [0] * Action.NUM_ACTIONS,
-        **kwargs,
+            self,
+            base_env: OvercookedEnv,
+            reward_shaping_factor=0.0,
+            reward_shaping_horizon=0,
+            empowerment_weight=.05,
+            agents=["ppo", "ppo"],
+            bc_schedule=None,
+            share_dense_reward=False,
+            extra_rew_shaping=DEFAULT_CONFIG["multi_agent_params"]["extra_rew_shaping"],
+            use_phi=True,
+            regen_mdp=False,
+            no_regular_reward=False,
+            action_rewards: List[float] = [0] * Action.NUM_ACTIONS,
+            **kwargs,
     ):
         """
         base_env: OvercookedEnv
@@ -375,20 +375,19 @@ class OvercookedMultiAgent(MultiAgentEnv):
         self.no_regular_reward = no_regular_reward
         self.action_rewards = action_rewards
         self._setup_observation_space()
-        self.action_space = spaces.Discrete(len(action_rewards)) # len(Action.ALL_ACTIONS))
+        self.action_space = spaces.Discrete(len(action_rewards))  # len(Action.ALL_ACTIONS))
         self.anneal_bc_factor(0)
         self.reset(regen_mdp=True)
-
 
     def _validate_featurize_fns(self, mapping):
         assert "ppo" in mapping or "smirl" in mapping or "smirl_e" in mapping, "At least one ppo agent must be specified"
         for k, v in mapping.items():
             assert (
-                k in self.supported_agents
+                    k in self.supported_agents
             ), "Unsuported agent type in featurize mapping {0}".format(k)
             assert callable(v), "Featurize_fn values must be functions"
             assert (
-                len(get_required_arguments(v)) == 1
+                    len(get_required_arguments(v)) == 1
             ), "Featurize_fn value must accept exactly one argument"
 
     def _validate_schedule(self, schedule):
@@ -396,7 +395,7 @@ class OvercookedMultiAgent(MultiAgentEnv):
         values = [p[1] for p in schedule]
 
         assert (
-            len(schedule) >= 2
+                len(schedule) >= 2
         ), "Need at least 2 points to linearly interpolate schedule"
         assert schedule[0][0] == 0, "Schedule must start at timestep 0"
         assert all(
@@ -406,7 +405,7 @@ class OvercookedMultiAgent(MultiAgentEnv):
             [v >= 0 and v <= 1 for v in values]
         ), "All values in schedule must be between 0 and 1"
         assert (
-            sorted(timesteps) == timesteps
+                sorted(timesteps) == timesteps
         ), "Timesteps must be in increasing order in schedule"
 
         # To ensure we flatline after passing last timestep
@@ -456,7 +455,7 @@ class OvercookedMultiAgent(MultiAgentEnv):
             agents = self.agents.copy()
             np.random.shuffle(self.agents)
             return agents
-        
+
         # Always include at least one ppo agent (i.e. bc_sp not supported for simplicity)
         agents = ["ppo"]
 
@@ -525,11 +524,11 @@ class OvercookedMultiAgent(MultiAgentEnv):
         # Add some extra reward shaping.
         for object_type in ["onion", "dish"]:
             for player_index, pickup_timesteps in enumerate(
-                self.base_env.game_stats[f"{object_type}_pickup"]
+                    self.base_env.game_stats[f"{object_type}_pickup"]
             ):
                 if (
-                    len(pickup_timesteps) > 0
-                    and pickup_timesteps[-1] == current_timestep
+                        len(pickup_timesteps) > 0
+                        and pickup_timesteps[-1] == current_timestep
                 ):
                     # Make sure player is not facing an empty counter.
                     player_state: PlayerState = prev_state.players[player_index]
@@ -545,15 +544,16 @@ class OvercookedMultiAgent(MultiAgentEnv):
         prev_player_state: PlayerState
         # info["custom_metrics"]["empowerment_classifier_loss"] = info["empowerment_classifier_loss"]
 
-        #for i in range(len(info["true_classified"])):
+        # for i in range(len(info["true_classified"])):
         #    info["custom_metrics"][f"tc_{i}"] = info["true_classified"][i]
         #    info["custom_metrics"][f"nc_{i}"] = info["null_classified"][i]
 
         # print(info["empowerment_classifier_loss"])
 
-        smirl_full_reward = np.mean(info["smirl_full_reward"], axis=(0, 1))
-        for i in range(len(smirl_full_reward)):
-            info["custom_metrics"]["smirl_" + str(i)] = smirl_full_reward[i]
+        if self.base_env.mdp.smirl:
+            smirl_full_reward = np.mean(info["smirl_full_reward"], axis=(0, 1))
+            for i in range(len(smirl_full_reward)):
+                info["custom_metrics"]["smirl_" + str(i)] = smirl_full_reward[i]
 
         # if self.base_env.game_stats[f"onion_drop"][1]: import pdb; pdb.set_trace()
         for player_index, prev_player_state in enumerate(prev_state.players):
@@ -579,7 +579,7 @@ class OvercookedMultiAgent(MultiAgentEnv):
             info["custom_metrics"][f"agent_{agent_index}_sparse"] = shaped_reward[agent_index]
             info["custom_metrics"][f"agent_{agent_index}_dense"] = agent_dense_reward
             shaped_reward[agent_index] += (
-                self.reward_shaping_factor * agent_dense_reward
+                    self.reward_shaping_factor * agent_dense_reward
             )
 
         for agent_index in range(2):
@@ -594,10 +594,10 @@ class OvercookedMultiAgent(MultiAgentEnv):
                 shaped_reward[agent_index] += yell_reward
             if "smirl_e" in self.curr_agents[agent_index]:
                 empowerment_reward = info["empowerment_reward"]
-                shaped_reward[agent_index] += self.empowerment_weight*empowerment_reward
+                shaped_reward[agent_index] += self.empowerment_weight * empowerment_reward
             if "contrastive" in self.curr_agents[agent_index]:
                 empowerment_reward = info["empowerment_reward"]
-                shaped_reward[agent_index] = self.empowerment_weight*empowerment_reward
+                shaped_reward[agent_index] = self.empowerment_weight * empowerment_reward
 
         obs = {self.curr_agents[0]: ob_p0, self.curr_agents[1]: ob_p1}
         rewards = {
@@ -686,12 +686,12 @@ class OvercookedMultiAgent(MultiAgentEnv):
             OvercookedMultiAgent instance specified by env_config params
         """
         assert (
-            env_config
-            and "env_params" in env_config
-            and "multi_agent_params" in env_config
+                env_config
+                and "env_params" in env_config
+                and "multi_agent_params" in env_config
         )
         assert (
-            "mdp_params" in env_config or "mdp_params_schedule_fn" in env_config
+                "mdp_params" in env_config or "mdp_params_schedule_fn" in env_config
         ), "either a fixed set of mdp params or a schedule function needs to be given"
         # "layout_name" and "rew_shaping_params"
         if "mdp_params" in env_config:
@@ -728,13 +728,13 @@ class OvercookedCallbacks(DefaultCallbacks):
         pass
 
     def on_episode_step(
-        self,
-        *,
-        worker: "RolloutWorker",
-        base_env: BaseEnv,
-        policies=None,
-        episode,
-        **kwargs,
+            self,
+            *,
+            worker: "RolloutWorker",
+            base_env: BaseEnv,
+            policies=None,
+            episode,
+            **kwargs,
     ) -> None:
         super().on_episode_step(
             worker=worker,
@@ -806,27 +806,27 @@ class OvercookedCallbacks(DefaultCallbacks):
         )
 
     def on_postprocess_trajectory(
-        self,
-        worker,
-        episode,
-        agent_id,
-        policy_id,
-        policies,
-        postprocessed_batch,
-        original_batches,
-        **kwargs,
+            self,
+            worker,
+            episode,
+            agent_id,
+            policy_id,
+            policies,
+            postprocessed_batch,
+            original_batches,
+            **kwargs,
     ):
         pass
 
 
 def build_overcooked_eval_function(
-    eval_params,
-    eval_mdp_params,
-    env_params,
-    outer_shape,
-    agent_0_policy_str="ppo",
-    agent_1_policy_str="ppo",
-    use_bc_featurize_fn=False,
+        eval_params,
+        eval_mdp_params,
+        env_params,
+        outer_shape,
+        agent_0_policy_str="ppo",
+        agent_1_policy_str="ppo",
+        use_bc_featurize_fn=False,
 ):
     """
     Used to "curry" rllib evaluation function by wrapping additional parameters needed in a local scope, and returning a
@@ -924,16 +924,16 @@ class EvaluationResults(TypedDict):
 
 
 def evaluate(
-    eval_params,
-    mdp_params: dict,
-    outer_shape,
-    agent_0_policy,
-    agent_1_policy,
-    agent_0_featurize_fn=None,
-    agent_1_featurize_fn=None,
-    env_params: dict = {},
-    agent_0_params: dict = {},
-    agent_1_params: dict = {},
+        eval_params,
+        mdp_params: dict,
+        outer_shape,
+        agent_0_policy,
+        agent_1_policy,
+        agent_0_featurize_fn=None,
+        agent_1_featurize_fn=None,
+        env_params: dict = {},
+        agent_0_params: dict = {},
+        agent_1_params: dict = {},
 ) -> EvaluationResults:
     """
     Used to visualize rollouts of trained policies
@@ -1006,7 +1006,7 @@ def get_base_env(mdp_params, env_params, outer_shape=None, mdp_params_schedule_f
 
 
 def get_base_mlam(
-    mdp_params, env_params, outer_shape=None, mdp_params_schedule_fn=None
+        mdp_params, env_params, outer_shape=None, mdp_params_schedule_fn=None
 ):
     ae = get_base_ae(mdp_params, env_params, outer_shape, mdp_params_schedule_fn)
     return ae.mlam
@@ -1021,7 +1021,7 @@ def get_base_ae(mdp_params, env_params, outer_shape=None, mdp_params_schedule_fn
     return: the base agent evaluator
     """
     assert (
-        mdp_params is None or mdp_params_schedule_fn is None
+            mdp_params is None or mdp_params_schedule_fn is None
     ), "either of the two has to be null"
     if type(mdp_params) == dict and "layout_name" in mdp_params:
         ae = AgentEvaluator.from_layout_name(
@@ -1049,9 +1049,9 @@ def get_base_ae(mdp_params, env_params, outer_shape=None, mdp_params_schedule_fn
 
 
 def get_littered_start_state_fn(
-    num_littered_objects: int,
-    mdp: OvercookedGridworld,
-    base_start_state_fn: Optional[Callable[[], OvercookedState]] = None,
+        num_littered_objects: int,
+        mdp: OvercookedGridworld,
+        base_start_state_fn: Optional[Callable[[], OvercookedState]] = None,
 ):
     def littered_start_state_fn() -> OvercookedState:
         if base_start_state_fn is None:
@@ -1069,7 +1069,7 @@ def get_littered_start_state_fn(
                     reachable_counter_positions.append(counter_position)
 
         for counter_position in random.sample(
-            reachable_counter_positions, num_littered_objects
+                reachable_counter_positions, num_littered_objects
         ):
             littered_object = random.choice(
                 [
@@ -1092,8 +1092,8 @@ def get_required_arguments(fn):
     params = inspect.signature(fn).parameters.values()
     for param in params:
         if (
-            param.default == inspect.Parameter.empty
-            and param.kind == param.POSITIONAL_OR_KEYWORD
+                param.default == inspect.Parameter.empty
+                and param.kind == param.POSITIONAL_OR_KEYWORD
         ):
             required.append(param)
     return required
@@ -1119,11 +1119,11 @@ HumanData = Dict[str, List[List[Tuple[dict, List[OvercookedAction]]]]]
 
 
 def load_human_trajectories_as_sample_batch(
-    human_data_fname: str,
-    layout_name: str,
-    traj_indices: Optional[Set[int]] = None,
-    featurize_fn_id: Literal["bc", "ppo"] = "bc",
-    _log=None,
+        human_data_fname: str,
+        layout_name: str,
+        traj_indices: Optional[Set[int]] = None,
+        featurize_fn_id: Literal["bc", "ppo"] = "bc",
+        _log=None,
 ) -> SampleBatch:
     env = OvercookedMultiAgent.from_config(
         {
@@ -1158,7 +1158,7 @@ def load_human_trajectories_as_sample_batch(
                 batch_builder,
                 trajectory,
                 agent_index=1,
-                episode_id=traj_index + 10**9,
+                episode_id=traj_index + 10 ** 9,
                 env=env,
                 featurize_fn_id=featurize_fn_id,
             )
@@ -1167,18 +1167,18 @@ def load_human_trajectories_as_sample_batch(
 
 
 def add_trajectory_to_builder(
-    batch_builder: SampleBatchBuilder,
-    trajectory: List[Tuple[dict, list]],
-    agent_index: int,
-    episode_id: int,
-    env: OvercookedEnv,
-    featurize_fn_id: Literal["bc", "ppo"] = "bc",
-    check_transitions: bool = False,
+        batch_builder: SampleBatchBuilder,
+        trajectory: List[Tuple[dict, list]],
+        agent_index: int,
+        episode_id: int,
+        env: OvercookedEnv,
+        featurize_fn_id: Literal["bc", "ppo"] = "bc",
+        check_transitions: bool = False,
 ):
     base_env = env.base_env
     prev_action = 0
     for t, ((state_dict, actions), (new_state_dict, _)) in enumerate(
-        zip(trajectory[:-1], trajectory[1:])
+            zip(trajectory[:-1], trajectory[1:])
     ):
         state = OvercookedState.from_dict(state_dict)
         state.timestep = t
@@ -1188,7 +1188,7 @@ def add_trajectory_to_builder(
             base_env.state = state
             next_state, reward, done, info = base_env.step(actions)
             assert (
-                new_state == next_state
+                    new_state == next_state
             ), "States differed (expected vs actual): {}\n\nexpected dict: \t{}\nactual dict: \t{}\nactions: \t{}".format(
                 base_env.display_states(new_state, next_state),
                 new_state.to_dict(),
