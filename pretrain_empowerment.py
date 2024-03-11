@@ -1,5 +1,6 @@
 import argparse
 
+from tqdm import tqdm
 from bpd.envs.overcooked import evaluate
 from bpd.training_utils import load_trainer
 from bpd.envs.overcooked import get_littered_start_state_fn
@@ -14,26 +15,27 @@ import torch
 from train import get_obs_shape_from_layout
 from typing import Dict, List
 import numpy as np
+import wandb
+import os
+from datetime import datetime
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--checkpoint_path", type=str, required=True)
-    parser.add_argument(
-        "--layout_name",
-        type=str,
-        help="name of the Overcooked layout to evaluate on",
-        required=True,
+def get_experiment_log_dir(log_prefix, experiment_name) -> str:
+    experiment_log_dir: str = os.path.join(
+        log_prefix,
+        experiment_name,
+        datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
     )
-    parser.add_argument(
-        "--num_games", "-n", type=int, default=20
-    )
-    parser.add_argument("--no_smirl", action="store_true")
-    parser.add_argument("--yell", action="store_true")
-    parser.add_argument("--goal_prob", type=float, default=0.2)
-    parser.add_argument("--epochs", type=int, default=10)
-    args = parser.parse_args()
+    os.makedirs(experiment_log_dir, exist_ok=True)
+    return experiment_log_dir
 
-    checkpoint_path: str = args.checkpoint_path
+
+def pretrain_empowerment(checkpoint_path: str, layout_name: str, num_games: int, goal_prob: float,
+                         batch_size: int, epochs: int, log_prefix: str) -> None:
+    wandb_run = wandb.run
+    log_dir = get_experiment_log_dir(log_prefix, wandb_run.name)
+    print(f"Saving checkpoints to {log_dir}")
+
+    wandb_run.config["log_dir"] = log_dir
 
     trainer = load_trainer(
         checkpoint_path, PPOTrainerCustom,
@@ -66,7 +68,7 @@ if __name__ == "__main__":
     }
 
     start_state_fn = get_littered_start_state_fn(
-        0, OvercookedGridworld.from_layout_name(args.layout_name)
+        0, OvercookedGridworld.from_layout_name(layout_name)
     )
     env_params = {  # noqa: F841
         "horizon": horizon,
@@ -74,13 +76,12 @@ if __name__ == "__main__":
         "num_mdp": 1
     }
     mdp_params = {
-        "layout_name": args.layout_name,
+        "layout_name": layout_name,
         "rew_shaping_params": rew_shaping_params,
-        "smirl": not args.no_smirl,
-        "yell": args.yell
+        "smirl": False,
+        "yell": False
     }
 
-    num_games = args.num_games
     eval_params = {
         "ep_length": horizon,
         "num_games": num_games,
@@ -101,14 +102,13 @@ if __name__ == "__main__":
         else:
             return env.lossless_state_encoding_mdp
 
-
     print("Constructing Empowerment Model")
     NUM_ACTIONS = Action.NUM_ACTIONS
     device = torch.device("cpu")
-    obs_shape = get_obs_shape_from_layout(args.layout_name)
+    obs_shape = get_obs_shape_from_layout(layout_name)
     empowerment_model = ContrastiveEmpowerment(num_actions=NUM_ACTIONS, in_channels=26, obs_shape=obs_shape,
                                                device=device,
-                                               prob=args.goal_prob)
+                                               prob=goal_prob, batch_size=batch_size, buffer_max_size=400)
 
     print("Generating Rollouts")
     results: Dict = evaluate(
@@ -121,17 +121,68 @@ if __name__ == "__main__":
         agent_1_featurize_fn=get_featurize_fn(policy_1),
     )
 
-
     empowerment_model.train()
 
+    ep_states = []
+    ep_actions = []
+
+    for i in range(num_games):
+        ep_states.append([env.lossless_state_encoding_mdp(state)[0] for state in results["ep_states"][i]])
+        ep_actions.append([Action.ACTION_TO_INDEX[action_pair[0]] for action_pair in
+                           results["ep_actions"][i]])  # Todo: Make this [0] random, to randomly select an expert
+    ep_states = np.array(ep_states)
+    ep_actions = np.array(ep_actions)
+
     batches: List[Dict] = [{"ppo": {
-        "obs" : results["ep_states"][i],
-        "actions" : results["ep_actions"][i]
+        "obs": ep_states[i][:-1],
+        "actions": ep_actions[i][:-1],
+        "new_obs": ep_states[i][1:]
     }} for i in range(num_games)]
 
-    for epoch in range(args.num_epochs):
+    import pdb; pdb.set_trace()
+
+    pbar = tqdm(range(epochs))
+    for epoch in pbar:
+        if epoch % 5 == 0:
+            empowerment_checkpoint_dir = os.path.join(log_dir, f"{epoch:03}")
+            os.makedirs(empowerment_checkpoint_dir, exist_ok=True)
+
+            empowerment_model.save_to_folder(empowerment_checkpoint_dir)
+
         batch_index = np.random.randint(0, len(batches))
         empowerment_model.modelUpdate(batches[batch_index])
+        pbar.set_description(
+            f"{epoch}: empowerment_classifier_loss: {empowerment_model.info['empowerment_classifier_loss']}")
+
+        wandb_run.log(
+            {"empowerment_classifier_loss": empowerment_model.info['empowerment_classifier_loss'], "epoch": epoch})
 
 
-    import pdb; pdb.set_trace()
+if __name__ == "__main__":
+    wandb.login()
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--checkpoint_path", type=str, required=True)
+    parser.add_argument(
+        "--layout_name",
+        type=str,
+        help="name of the Overcooked layout to evaluate on",
+        required=True,
+    )
+    parser.add_argument(
+        "--num_games", "-n", type=int, default=20
+    )
+    parser.add_argument("--goal_prob", type=float, default=0.2)
+    parser.add_argument("--epochs", type=int, default=10)
+    parser.add_argument("--no_wandb", action="store_true")
+    parser.add_argument("--log_prefix", type=str, default="data/logs/pretrain_empowerment")
+    parser.add_argument("--batch_size", "-B", type=int, default=128)
+    args = parser.parse_args()
+
+    wandb_mode = "disabled" if args.no_wandb else "online"
+    run = wandb.init(project="Entropy",
+                     name=f"{args.layout_name}_n{args.num_games}_e{args.epochs}_g{args.goal_prob}_B{args.batch_size}",
+                     group="pretrain_empowerment", config=args, mode=wandb_mode)  # TODO: Add config
+
+    pretrain_empowerment(args.checkpoint_path, args.layout_name, args.num_games, args.goal_prob, args.batch_size,
+                         args.epochs, args.log_prefix)

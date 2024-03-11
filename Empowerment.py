@@ -57,7 +57,8 @@ class Empowerment(ABC):
 
 
 class ContrastiveEmpowerment(Empowerment):
-    def __init__(self, num_actions, in_channels, obs_shape, device, prob=0.2, z_dim=16):
+    def __init__(self, num_actions, in_channels, obs_shape, device, prob=0.2, z_dim=16, batch_size: int = 1024,
+                 buffer_max_size: int = 10_000):
         super().__init__(in_channels, device)
 
         self.num_actions = num_actions
@@ -73,9 +74,10 @@ class ContrastiveEmpowerment(Empowerment):
         self.bce_loss = nn.BCELoss()
 
         self.info = {"empowerment_classifier_loss": 0, "contrastive_empowerment_rewards": 0}
-        self.buffer = SimpleBuffer(max_size=100000)
+        self.buffer = SimpleBuffer(max_size=buffer_max_size)
 
         self.prob = prob
+        self.batch_size = batch_size
 
     def train(self):
         self.sa_encoder.train()
@@ -151,7 +153,7 @@ class ContrastiveEmpowerment(Empowerment):
         if empowerment_batch is not None:
             empowerment_batch["rewards"] = empowerment_rewards
 
-        train_batch = self.getBatch(1024)  # 256
+        train_batch = self.getBatch(self.batch_size)  # 256
         loss, loss_info = self.getLoss(train_batch)
 
         loss.backward()

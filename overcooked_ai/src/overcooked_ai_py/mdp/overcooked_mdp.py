@@ -1182,7 +1182,8 @@ class OvercookedGridworld(object):
             smirl_full_reward = 0
 
         # Resolve yell action
-        yell_reward = self.resolve_yell(joint_action)
+        if self.yell:
+            yell_reward = self.resolve_yell(joint_action)
 
         infos = {
             "event_infos": events_infos,
@@ -1190,10 +1191,7 @@ class OvercookedGridworld(object):
             "shaped_reward_by_agent": shaped_reward_by_agent,
             "smirl_reward": smirl_reward,
             "smirl_full_reward": smirl_full_reward,
-            "yell_reward": yell_reward,
-            "custom_metrics": {
-                "yell_reward": yell_reward
-            }
+            "custom_metrics": {}
         }
 
         # Compute empowerment if specified

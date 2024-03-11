@@ -518,7 +518,7 @@ class OvercookedMultiAgent(MultiAgentEnv):
             dense_reward = info["shaped_r_by_agent"]
 
         smirl_reward = info["smirl_reward"]
-        yell_reward = info["yell_reward"]
+        # yell_reward = info["yell_reward"]
         ob_p0, ob_p1 = self._get_obs(next_state)
 
         # Add some extra reward shaping.
@@ -591,7 +591,7 @@ class OvercookedMultiAgent(MultiAgentEnv):
         for agent_index in range(2):
             if "smirl" in self.curr_agents[agent_index]:
                 shaped_reward[agent_index] = smirl_reward
-                shaped_reward[agent_index] += yell_reward
+                # shaped_reward[agent_index] += yell_reward
             if "smirl_e" in self.curr_agents[agent_index]:
                 empowerment_reward = info["empowerment_reward"]
                 shaped_reward[agent_index] += self.empowerment_weight * empowerment_reward
