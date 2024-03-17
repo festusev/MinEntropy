@@ -6,6 +6,8 @@ import numpy as np
 import ray
 import torch
 import attr
+
+from MetricsCustom import MetricsABC
 from bpd.envs.overcooked import (
     OvercookedCallbacks,
     OvercookedMultiAgent,
@@ -29,7 +31,7 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.typing import MultiAgentPolicyConfigDict, TrainerConfigDict
 from typing_extensions import Literal
 from Empowerment import Empowerment, ClassifierEmpowerment, TwoHeadedEmpowerment, MIMIEmpowerment, \
-    ContrastiveEmpowerment
+    ContrastiveEmpowerment, EmpowermentMetrics
 from PPOTrainerCustom import TrainCustomOneStep
 import ray
 import wandb
@@ -130,16 +132,16 @@ def get_obs_shape_from_layout(layout_name):
     return len(grid[0]), len(grid)
 
 
-def get_policy_ids(model_0: str, model_1: str = None) -> List[str]:
-    policy_ids = [model_0 + "_0"]
-
-    if model_1 is not None:
-        if model_0 != model_1:
-            policy_ids.append(model_1 + "_0")
-        else:
-            policy_ids.append(model_1 + "_1")
-
-    return policy_ids
+# def get_policy_ids(model_0: str, model_1: str = None) -> List[str]:
+#     policy_ids = [model_0 + "_0"]
+#
+#     if model_1 is not None:
+#         if model_0 != model_1:
+#             policy_ids.append(model_1 + "_0")
+#         else:
+#             policy_ids.append(model_1 + "_1")
+#
+#     return policy_ids
 
 
 def get_policy_specs(policy_ids: List[str], env: OvercookedMultiAgent,
@@ -158,7 +160,11 @@ def get_policy_specs(policy_ids: List[str], env: OvercookedMultiAgent,
 
 
 def load_policy_configs_from_checkpoint(checkpoint_path: str) -> Tuple[List[str], List[Dict]]:
-    checkpoint = load_trainer_config(checkpoint_path)
+    if args.model_0.endswith("[0]") or args.model_0.endswith("[1]"):
+        checkpoint = load_trainer_config(checkpoint_path[:-3])
+    else:
+        checkpoint = load_trainer_config(checkpoint_path)
+
     loaded_policy_dict: MultiAgentPolicyConfigDict = (checkpoint["multiagent"]["policies"])
 
     model_configs: List[Dict] = []
@@ -174,10 +180,16 @@ def load_policy_configs_from_checkpoint(checkpoint_path: str) -> Tuple[List[str]
 
         model_configs.append(loaded_policy_config)
 
+    if checkpoint_path.endswith("[0]"):
+        loaded_policy_ids = [loaded_policy_ids[0]]
+        model_configs = [model_configs[0]]
+    elif checkpoint_path.endswith("[1]"):
+        loaded_policy_ids = [loaded_policy_ids[1]]
+        model_configs = [model_configs[1]]
     return loaded_policy_ids, model_configs
 
 
-def get_model_configs(policy_ids: List[str]) -> List[Dict]:
+def get_model_config(policy_name: str) -> Dict:
     custom_model_config = {
         "num_hidden_layers": 3,
         "size_hidden_layers": 64,
@@ -186,21 +198,16 @@ def get_model_configs(policy_ids: List[str]) -> List[Dict]:
         "split_backbone": False
     }
 
-    model_configs = []
-    for i in range(len(policy_ids)):
-        policy_name: str = policy_ids[i][:-2]
-        model_type = MODEL_TYPE_REGISTRY[policy_name]
-        model_configs.append({"model": {
-            "custom_model": model_type,
-            "max_seq_len": HORIZON,
-            "custom_model_config": custom_model_config,
-            "vf_share_layers": False,
-            "use_lstm": False,
-            "lstm_cell_size": 256,
-            "use_attention": False,
-        }})
-
-    return model_configs
+    model_type = MODEL_TYPE_REGISTRY[policy_name]
+    return {"model": {
+        "custom_model": model_type,
+        "max_seq_len": HORIZON,
+        "custom_model_config": custom_model_config,
+        "vf_share_layers": False,
+        "use_lstm": False,
+        "lstm_cell_size": 256,
+        "use_attention": False,
+    }}
 
 
 def get_empowerment_train_extras(empowerment_model: Empowerment) -> List[Dict]:
@@ -218,7 +225,8 @@ def get_empowerment_train_extras(empowerment_model: Empowerment) -> List[Dict]:
 
 def get_trainer(multiagent_mode: bool, experiment_name: str, log_dir: str, num_training_iters: int,
                 policies_to_train: List[str], overcooked_env_config: Dict,
-                policies: MultiAgentPolicyConfigDict, seed: int, train_extras: List[Dict]) -> PPOTrainerCustom:
+                policies: MultiAgentPolicyConfigDict, seed: int, train_extras: List[Dict],
+                metrics_extras: List[Callable]) -> PPOTrainerCustom:
     if multiagent_mode:
         policy_mapping_fn = lambda agent_id, *args, **kwargs: cast(str, agent_id)
     else:  # We are doing self-play
@@ -254,9 +262,11 @@ def get_trainer(multiagent_mode: bool, experiment_name: str, log_dir: str, num_t
         ],
         "framework": "torch",
         "execution_plan": {
-            "train_extras": train_extras
+            "train_extras": train_extras,
+            "metrics_extras": metrics_extras
         },
-        "simple_optimizer": True
+        "simple_optimizer": True,
+        "create_env_on_driver": True
     }
 
     if "disable_env_checking" in COMMON_CONFIG:
@@ -300,26 +310,48 @@ def setup_experiment(args: argparse.Namespace) -> Tuple[PPOTrainerCustom, Empowe
 
     multiagent_mode = args.model_1 is not None
 
+    policy_ids = []
+    model_configs = []
+
     # If model_0 is not in the MODEL_TYPE_REGISTRY, load from checkpoint
     if args.model_0 not in MODEL_TYPE_REGISTRY:
         policy_ids, model_configs = load_policy_configs_from_checkpoint(args.model_0)
     else:
-        policy_ids = get_policy_ids(args.model_0, args.model_1)
-        model_configs = get_model_configs(policy_ids)
+        policy_ids.append(args.model_0 + "_0")
+        model_configs.append(get_model_config(args.model_0))
+
+    if args.model_1 not in MODEL_TYPE_REGISTRY:
+        assert len(policy_ids) == 1, "The model_0 checkpoint has two policies, so a model_1 checkpoint cannot be specified"
+        model_1_policy_ids, model_1_configs = load_policy_configs_from_checkpoint(args.model_1)
+        assert len(model_1_policy_ids) == 1, "The model_1 checkpoint has two policies, please specify one"
+
+        policy_ids.append(model_1_policy_ids[0][:-2] + "_1")
+        model_configs.append(model_1_configs[0])
+    else:
+        policy_ids.append(args.model_1 + "_1")
+        model_configs.append(get_model_config(args.model_0))
 
     device = torch.device("cpu")  # torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Train an agent with empowerment + SMiRL rewards. First, add a callback to the PPO train loop that updates
     # the empowerment networks
     train_extras: List[Dict] = []
+    metrics_extras: List[MetricsABC] = []
 
     empowerment_model: Optional[Empowerment] = None
     compute_empowerment: bool = any(["smirl_e" in name or "contrastive_e" in name for name in policy_ids])
     if compute_empowerment:
-        empowerment_model = ContrastiveEmpowerment(num_actions=Action.NUM_ACTIONS, in_channels=26, obs_shape=obs_shape,
-                                                   device=device,
-                                                   prob=args.goal_prob)
+        empowerment_model: ContrastiveEmpowerment = ContrastiveEmpowerment(num_actions=Action.NUM_ACTIONS, in_channels=26,
+                                                                           obs_shape=obs_shape, device=device,
+                                                                           goal_prob=args.goal_prob, horizon=HORIZON)
+        if args.empowerment_checkpoint is not None:
+            empowerment_model.load_from_folder(args.empowerment_checkpoint)
+
+        if args.freeze_empowerment:
+            empowerment_model.freeze_weights()
+
         train_extras.extend(get_empowerment_train_extras(empowerment_model))
+        metrics_extras.append(EmpowermentMetrics(empowerment_model, horizon=HORIZON))
 
     overcooked_env_config: Dict = get_overcooked_env_config(layout_name, num_training_iters, policy_ids,
                                                             no_anneal=args.no_anneal,
@@ -350,18 +382,19 @@ def setup_experiment(args: argparse.Namespace) -> Tuple[PPOTrainerCustom, Empowe
     )
 
     trainer = get_trainer(multiagent_mode, experiment_name, log_dir, num_training_iters, policies_to_train,
-                          overcooked_env_config, policies, seed, train_extras)
+                          overcooked_env_config, policies, seed, train_extras, metrics_extras)
 
     return trainer, empowerment_model
 
 
 def train(trainer: PPOTrainerCustom, num_training_iters: int, save_freq: int,
           empowerment_model: Optional[Empowerment]) -> None:
-    result = None
+    wandb_run = wandb.run
     for _ in range(num_training_iters):
         print(f"Starting training iteration {trainer.iteration}")
         result = trainer.train()
-
+        del result["config"]
+        wandb_run.log(result)
         if trainer.iteration % save_freq == 0:
             checkpoint = trainer.save()
 
@@ -371,17 +404,34 @@ def train(trainer: PPOTrainerCustom, num_training_iters: int, save_freq: int,
 
             print(f"Saved checkpoint to {checkpoint}")
 
+        # import pdb; pdb.set_trace()
+        # eval_results = trainer.evaluate()
+        # print(eval_results)
+
+
     checkpoint = trainer.save()
     print(f"Saved final checkpoint to {checkpoint}")
 
+def get_wandb_group(args: argparse.Namespace) -> str:
+    return "_".join([args.group, args.layout_name])
+
+def get_wandb_name(args: argparse.Namespace, trainer: PPOTrainerCustom) -> str:
+    policy_names = [name[:-2] for name in trainer.config["multiagent"]["policies"].keys()]
+    policy_names.append(f"both{args.train_both}")
+    policy_names.append(f"gp{args.goal_prob}")
+    policy_names.append(f"fr{args.freeze_empowerment}")
+
+    return "_".join(policy_names)
 
 def main(args: argparse.Namespace) -> None:
-    wandb_mode = "disabled" if args.no_wandb else "enabled"
-    run = wandb.init(project="Entropy", config={}, mode=wandb_mode)  # TODO: Add config
+    wandb_mode = "disabled" if args.no_wandb else "online"
+    wandb_run = wandb.init(project="Entropy", group=get_wandb_group(args), config=args, mode=wandb_mode)
 
     checkpoint_save_freq = 25
 
     trainer, empowerment_model = setup_experiment(args)
+    wandb_run.name = get_wandb_name(args, trainer)
+    wandb_run.config["checkpoint_directory"] = trainer.logdir
     train(trainer, args.num_training_iters, checkpoint_save_freq, empowerment_model)
     wandb.finish()
 
@@ -410,6 +460,9 @@ if __name__ == "__main__":
     parser.add_argument("--yell", action="store_true")
     parser.add_argument("--no_wandb", action="store_true")
     parser.add_argument("--goal_prob", type=float, default=0.2)
+    parser.add_argument("--empowerment_checkpoint", type=str, required=False)
+    parser.add_argument("--freeze_empowerment", action="store_true")
+    parser.add_argument("--group", type=str, default="train")
     args = parser.parse_args()
 
     wandb.login()

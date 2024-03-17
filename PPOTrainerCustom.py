@@ -20,6 +20,9 @@ from ray.rllib.utils.typing import TrainerConfigDict, SampleBatchType
 from ray.util.iter import LocalIterator
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 
+from MetricsCustom import MetricsCallback
+
+
 ## DO NOT MODIFY
 class UpdateKL:
     """Callback to update the KL based on optimization info.
@@ -97,7 +100,6 @@ class TrainCustomOneStep:
         self.callback = callback
 
     def __call__(self, batch: SampleBatchType) -> SampleBatchType:
-        sample_batches = []
         # if isinstance(batch, MultiAgentBatch):
         #     for b in batch.policy_batches.values():
         #         sample_batches.append(b)
@@ -123,7 +125,7 @@ class PPOTrainerCustom(PPOTrainer):
     @override(PPOTrainer)
     def get_default_config(cls) -> TrainerConfigDict:
         default_config = super().get_default_config()
-        default_config["execution_plan"] = {"train_extras": []}
+        default_config["execution_plan"] = {"train_extras": [], "metrics_extras": []}
         return default_config
 
     @override(PPOTrainer)
@@ -160,6 +162,13 @@ class PPOTrainerCustom(PPOTrainer):
         # Standardize advantages.
         rollouts = rollouts.for_each(StandardizeFields(["advantages"]))
 
+        metrics_callbacks = []
+        for extra in kwargs["metrics_extras"]:
+            metric_callback = MetricsCallback(metrics_computer=extra)
+            rollouts = rollouts.for_each(metric_callback.clear_rollouts)
+            rollouts = rollouts.for_each(metric_callback.add_rollout)
+            metrics_callbacks.append(metric_callback)
+
         # Perform one training step on the combined + standardized batch.
         if config["simple_optimizer"]:
             train_op = rollouts.for_each(
@@ -181,6 +190,11 @@ class PPOTrainerCustom(PPOTrainer):
             UpdateKL(workers))
 
         # Warn about bad reward scales and return training metrics.
-        return StandardMetricsReporting(train_op, workers, config) \
+        results = StandardMetricsReporting(train_op, workers, config) \
             .for_each(lambda result: warn_about_bad_reward_scales(
             config, result))
+
+        for metric_callback in metrics_callbacks:
+            results = results.for_each(metric_callback)
+
+        return results

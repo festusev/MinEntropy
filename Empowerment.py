@@ -2,23 +2,59 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Type, List, Dict, Any, Tuple
+
+from ray.rllib import SampleBatch
 from ray.rllib.utils.typing import SampleBatchType
 from ReplayBuffers import ActionReplayBuffer, SimpleBuffer
 
 import numpy as np
 from abc import ABC, abstractmethod, abstractproperty
-
+import os
+from ray.util.iter import LocalIterator
+from MetricsCustom import MetricsABC
 
 def rowwise_cosine_similarity(t1: torch.tensor, t2: torch.tensor, temperature: nn.Parameter):
     dotted = torch.sum((t1 * t2).flatten(end_dim=-2), dim=-1)
     norm_dotted = dotted / (torch.norm(t1, dim=1) * torch.norm(t2, dim=1))
     return norm_dotted * temperature
+def sample_batch_from_buffer(buffer: SimpleBuffer, batch_size: int, goal_prob: float, horizon: int) -> Dict:
+    sa_idx: np.ndarray = np.random.randint(0, high=len(buffer), size=batch_size)
+    g_idx = sample_geometric_goal(sa_idx, goal_prob=goal_prob, horizon=horizon)
 
+    obs = buffer.obs[sa_idx]
+    actions = buffer.actions[sa_idx]
+    goals = buffer.obs[g_idx]
+
+    return {"obs": obs, "actions": actions, "goals": goals}
+
+def sample_geometric_goal(sa_idx: np.ndarray, goal_prob: float, horizon: int) -> np.ndarray:
+    n = sa_idx.shape[0]
+    max_idx = horizon*(sa_idx // horizon + 1)
+
+    g_idx = sa_idx + np.random.geometric(goal_prob, size=n)
+    g_idx = np.clip(g_idx, 0, max_idx - 1)
+
+    return g_idx
+
+class EmpowermentMetrics(MetricsABC):
+    def __init__(self, empowerment_model: "Empowerment", horizon: int = 400) -> None:
+        self.empowerment_model = empowerment_model
+        self.horizon = horizon
+
+    def update_results(self, sample_batch: SampleBatchType, result: Dict) -> None:
+        custom_metrics = {}
+        for policy_name in sample_batch.keys():
+            custom_metrics[policy_name + "_reward_mean"] = sample_batch[policy_name]["rewards"].mean()*self.horizon
+
+        custom_metrics.update({"e_" + key: value for key, value in self.empowerment_model.info.items()})
+
+        result["empowerment_metrics"] = custom_metrics
 
 class Empowerment(ABC):
     def __init__(self, in_channels, device):
         self.in_channels = in_channels
         self.device = device
+        self.info = {}
 
     @abstractmethod
     def train(self) -> None:
@@ -29,15 +65,15 @@ class Empowerment(ABC):
         pass
 
     @abstractmethod
-    def modelUpdate(self, sample_batches: List[SampleBatchType]) -> Tuple[float, float]:
+    def model_update(self, sample_batches: List[SampleBatchType]) -> Tuple[float, float]:
         pass
 
     @abstractmethod
-    def getLoss(self, *args, **kwargs):
+    def get_loss(self, *args, **kwargs):
         pass
 
     @abstractmethod
-    def computeReward(self, obs, action, new_obs) -> Tuple[int, Dict[str, Any]]:
+    def compute_reward(self, obs, action, new_obs) -> Tuple[int, Dict[str, Any]]:
         pass
 
     @abstractmethod
@@ -53,31 +89,40 @@ class Empowerment(ABC):
                             device=self.device)
 
     def __call__(self, sample_batches: List[SampleBatchType]) -> Tuple[float, float]:
-        return self.modelUpdate(sample_batches)
+        return self.model_update(sample_batches)
 
 
 class ContrastiveEmpowerment(Empowerment):
-    def __init__(self, num_actions, in_channels, obs_shape, device, prob=0.2, z_dim=16, batch_size: int = 1024,
-                 buffer_max_size: int = 10_000):
+    def __init__(self, num_actions, in_channels, obs_shape, device, goal_prob=0.2, z_dim=16, batch_size: int = 1024,
+                 buffer_max_size: int = 10_000, lr: float = 3e-4, temperature_begin: float = 1, horizon: int=400):
         super().__init__(in_channels, device)
 
+        assert buffer_max_size % horizon == 0, "Buffer_max_size must be divisible by the horizon"
+
+        self.lr = lr
         self.num_actions = num_actions
         self.z_dim = z_dim
         self.sa_encoder: nn.Module = SAEncoder(in_channels, z_dim)
         self.g_encoder: nn.Module = SEncoder(in_channels, z_dim)
-        self.temperature: nn.Parameter = nn.Parameter(torch.tensor(1, requires_grad=True, dtype=torch.float32))
+        self.temperature: nn.Parameter = nn.Parameter(torch.tensor(temperature_begin, requires_grad=True, dtype=torch.float32))
+        self.horizon = horizon
 
         self.sa_encoder.to(device)
         self.g_encoder.to(device)
 
-        self.optim = torch.optim.Adam([*self.sa_encoder.parameters(), *self.g_encoder.parameters()], lr=0.01)
+        self.create_optim()
+
         self.bce_loss = nn.BCELoss()
 
-        self.info = {"empowerment_classifier_loss": 0, "contrastive_empowerment_rewards": 0}
+        self.info = {"empowerment_classifier_loss": 0, "empowerment_reward": 0}
         self.buffer = SimpleBuffer(max_size=buffer_max_size)
 
-        self.prob = prob
+        self.goal_prob = goal_prob
         self.batch_size = batch_size
+
+    def create_optim(self):
+        self.optim = torch.optim.Adam([{"params":[*self.sa_encoder.parameters(), *self.g_encoder.parameters()],
+                                        "lr":self.lr}, {"params": [self.temperature], "lr": 0.01}])
 
     def train(self):
         self.sa_encoder.train()
@@ -87,27 +132,21 @@ class ContrastiveEmpowerment(Empowerment):
         self.sa_encoder.eval()
         self.g_encoder.eval()
 
-    def sampleGeometricGoal(self, sa_idx: np.ndarray, max_idx):
-        n = sa_idx.shape[0]
-
-        g_idx = sa_idx + np.random.geometric(self.prob, size=n)
-        g_idx = np.clip(g_idx, 0, max_idx - 1)
-
-        return g_idx
-
-    def getLoss(self, train_batch: Dict):
-        self.train()
-
-        obs, actions, goals = train_batch["obs"], train_batch["actions"], train_batch["goals"]
-        n = obs.shape[0]
+    def get_loss(self, g_z: torch.tensor, sa_z: torch.tensor) -> Tuple[torch.Tensor, Dict]:
+        n = g_z.shape[0]
 
         null_g_idx = np.random.randint(0, high=n, size=n)
 
-        g_z = self.g_encoder(self.convertObs(goals))
-        sa_z = self.sa_encoder(self.convertObs(obs), torch.tensor(actions, device=self.device).long())
-
+        # TODO: Observation, the below learns to be around 0, when it should be learning -1
+        # Todo: try plain dot product just for the sake of it
+        # TODO: Also try multiplying the temperature
         dotted = rowwise_cosine_similarity(sa_z, g_z, self.temperature)
         null_dotted = rowwise_cosine_similarity(sa_z, g_z[null_g_idx], self.temperature)
+
+        return self.get_loss_from_dotted(dotted, null_dotted)
+
+    def get_loss_from_dotted(self, dotted: torch.Tensor, null_dotted: torch.Tensor) -> Tuple[torch.Tensor, Dict]:
+        n = dotted.shape[0]
 
         true_loss = self.bce_loss(nn.functional.sigmoid(dotted), torch.ones(n))
         null_loss = self.bce_loss(nn.functional.sigmoid(null_dotted), torch.zeros(n))
@@ -115,7 +154,8 @@ class ContrastiveEmpowerment(Empowerment):
 
         return loss, {"true_loss": true_loss.item(), "null_loss": null_loss.item()}
 
-    def rewardFromBatch(self, human_batch):
+
+    def reward_from_batch(self, human_batch) -> torch.Tensor:
         self.eval()
 
         with torch.no_grad():
@@ -126,7 +166,7 @@ class ContrastiveEmpowerment(Empowerment):
             n = obs.shape[0]
 
             sa_idx = np.arange(0, n)
-            g_idx = self.sampleGeometricGoal(sa_idx, max_idx=n)
+            g_idx = sample_geometric_goal(sa_idx, goal_prob=self.goal_prob, horizon=self.horizon)
 
             g_z = self.g_encoder(obs[g_idx])
             sa_z = self.sa_encoder(obs, actions)
@@ -135,8 +175,19 @@ class ContrastiveEmpowerment(Empowerment):
 
         return dotted
 
-    def modelUpdate(self, sample_batches: Dict):
-        self.train()
+    def encode_batch(self, batch: Dict) -> Tuple[torch.Tensor, torch.Tensor]:
+        obs, actions, goals = batch["obs"], batch["actions"], batch["goals"]
+
+        # TODO: Try different null goal sampling
+        g_z = self.g_encoder(self.convertObs(goals))
+        sa_z = self.sa_encoder(self.convertObs(obs), torch.tensor(actions, device=self.device).long())
+
+        return g_z, sa_z
+
+    def model_update(self, sample_batches: Dict) -> torch.tensor:
+        # If we are training, optim will be set
+        if self.optim is not None:
+            self.train()
 
         empowerment_batch = None
         human_batch = None
@@ -148,39 +199,33 @@ class ContrastiveEmpowerment(Empowerment):
 
         self.buffer.add(human_batch)
 
-        empowerment_rewards = self.rewardFromBatch(human_batch)
+        empowerment_rewards = self.reward_from_batch(human_batch)
 
         if empowerment_batch is not None:
             empowerment_batch["rewards"] = empowerment_rewards
 
-        train_batch = self.getBatch(self.batch_size)  # 256
-        loss, loss_info = self.getLoss(train_batch)
+        train_batch = sample_batch_from_buffer(self.buffer, self.batch_size, self.goal_prob, horizon=self.horizon)
 
-        loss.backward()
+        g_z, sa_z = self.encode_batch(train_batch)
+        loss, loss_info = self.get_loss(g_z, sa_z)
 
-        torch.nn.utils.clip_grad_norm_(self.g_encoder.parameters(), 250)
-        torch.nn.utils.clip_grad_norm_(self.sa_encoder.parameters(), 250)
+        if self.optim is not None:
+            loss.backward()
 
-        self.optim.step()
-        self.optim.zero_grad()
+            torch.nn.utils.clip_grad_norm_(self.g_encoder.parameters(), 250)
+            torch.nn.utils.clip_grad_norm_(self.sa_encoder.parameters(), 250)
+
+            self.optim.step()
+            self.optim.zero_grad()
 
         self.info = {"empowerment_classifier_loss": loss.item(),
-                     "contrastive_empowerment_rewards": empowerment_rewards.detach().numpy().mean()}
+                     "empowerment_reward": empowerment_rewards.detach().numpy().mean(),
+                     "temperature": self.temperature.detach().numpy().item()}
         self.info.update(loss_info)
 
         return loss
 
-    def getBatch(self, batch_size) -> Dict:
-        sa_idx = np.random.randint(0, high=len(self.buffer), size=batch_size)
-        g_idx = self.sampleGeometricGoal(sa_idx, max_idx=len(self.buffer))
-
-        obs = self.buffer.obs[sa_idx]
-        actions = self.buffer.actions[sa_idx]
-        goals = self.buffer.obs[g_idx]
-
-        return {"obs": obs, "actions": actions, "goals": goals}
-
-    def computeReward(self, obs, action, new_obs):
+    def compute_reward(self, obs, action, new_obs):
         # We compute reward later, after all the rollout workers have finished
         return torch.tensor(0), self.info
 
@@ -189,11 +234,24 @@ class ContrastiveEmpowerment(Empowerment):
         self.sa_encoder = empowerment.sa_encoder
         self.g_encoder = empowerment.g_encoder
 
-    def save_to_folder(self, folder):
-        import os
+    def save_to_folder(self, folder) -> None:
         os.makedirs(folder, exist_ok=True)
         torch.save(self.sa_encoder.state_dict(), os.path.join(folder, "sa_encoder.pt"))
         torch.save(self.g_encoder.state_dict(), os.path.join(folder, "g_encoder.pt"))
+        torch.save(self.temperature, os.path.join(folder, "temperature.pt"))
+
+
+    def load_from_folder(self, folder) -> None:
+        self.sa_encoder.load_state_dict(torch.load(os.path.join(folder, "sa_encoder.pt")))
+        self.g_encoder.load_state_dict(torch.load(os.path.join(folder, "g_encoder.pt")))
+        self.temperature = torch.load(os.path.join(folder, "temperature.pt"))
+
+        self.create_optim()
+
+
+    def freeze_weights(self) -> None:
+        self.optim = None
+        self.eval()
 
 
 class SEncoder(nn.Module):
@@ -257,7 +315,7 @@ class SAEncoder(nn.Module):
 
     def __init__(self, in_channels, z_dim):
         super().__init__()
-
+        # FIXME: This should probably be the same size conv model as the SEncoder above
         self.state_model = nn.Sequential(
             nn.Conv2d(in_channels, 64, 3, padding='same'),
             nn.LeakyReLU(),
@@ -376,14 +434,14 @@ class MIMIEmpowerment(Empowerment):
 
         return batch, null_actions
 
-    def modelUpdate(self, sample_batches: List[SampleBatchType]):
+    def model_update(self, sample_batches: List[SampleBatchType]):
         for batch in sample_batches:
             self.humanBuffer.add(batch)
 
         self.train()
 
         batches, null_actions = self.get_batch(self.batch_size)
-        loss = self.getLoss(batches, null_actions)
+        loss = self.get_loss(batches, null_actions)
 
         loss.backward()
         self.optim.step()
@@ -393,7 +451,7 @@ class MIMIEmpowerment(Empowerment):
 
         return loss
 
-    def getLoss(self, batches: List[SimpleBuffer], null_actions: List[torch.tensor]):
+    def get_loss(self, batches: List[SimpleBuffer], null_actions: List[torch.tensor]):
         loss = 0
 
         for i, batch in enumerate(batches):
@@ -422,7 +480,7 @@ class MIMIEmpowerment(Empowerment):
 
         return I_tuba
 
-    def computeReward(self, obs, action, new_obs):
+    def compute_reward(self, obs, action, new_obs):
         self.eval()
 
         with torch.no_grad():
@@ -474,14 +532,14 @@ class ClassifierEmpowerment(Empowerment):
 
         return batch
 
-    def modelUpdate(self, sample_batches: List[SampleBatchType]):
+    def model_update(self, sample_batches: List[SampleBatchType]):
         for batch in sample_batches:
             self.humanBuffer.add(batch)
 
         self.train()
 
         batch: List[List[SimpleBuffer]] = self.get_batch(self.batch_size)
-        loss, true_classified, null_classified = self.getLoss(batch)
+        loss, true_classified, null_classified = self.get_loss(batch)
 
         loss.backward()
         self.optim.step()
@@ -493,7 +551,7 @@ class ClassifierEmpowerment(Empowerment):
 
         return loss
 
-    def getLoss(self, batch: List[List[SimpleBuffer]]):
+    def get_loss(self, batch: List[List[SimpleBuffer]]):
         loss = 0
 
         for true_batch, null_batch in batch:
@@ -514,7 +572,7 @@ class ClassifierEmpowerment(Empowerment):
 
         return self.classifier(obs, actions, new_obs)
 
-    def computeReward(self, obs, action, new_obs):
+    def compute_reward(self, obs, action, new_obs):
         self.eval()
 
         with torch.no_grad():
@@ -658,10 +716,10 @@ class TwoHeadedEmpowerment(Empowerment):
         self.state_marginal.eval()
         self.transition.eval()
 
-    def modelUpdate(self, sample_batches: List[SampleBatchType]):
+    def model_update(self, sample_batches: List[SampleBatchType]):
         self.train()
 
-        sm_loss, tr_loss = self.getLoss(sample_batches)
+        sm_loss, tr_loss = self.get_loss(sample_batches)
 
         sm_loss.backward()
         self.sm_optim.step()
@@ -673,7 +731,7 @@ class TwoHeadedEmpowerment(Empowerment):
 
         return sm_loss.item(), tr_loss.item()
 
-    def getLoss(self, sample_batches):
+    def get_loss(self, sample_batches):
         sm_loss = 0
         tr_loss = 0
         for batch in sample_batches:
@@ -693,7 +751,7 @@ class TwoHeadedEmpowerment(Empowerment):
 
         return sm_loss, tr_loss
 
-    def computeReward(self, obs, action, new_obs):
+    def compute_reward(self, obs, action, new_obs):
         obs = torch.tensor(obs[..., :self.in_channels].transpose((0, -1, 1, 2)), dtype=torch.float32,
                            device=self.device)
         action = torch.tensor([action], device=self.device)  # , dtype=torch.float32)
