@@ -15,6 +15,9 @@ dependencies:
   - sacred=0.8.5
   - ipython=8.18.1
   - sqlite=3.45.2
+  - numpy=1.26
+  - scipy=1.12
   - pip:
     - -e boltzmann-policy-distribution
     - -e overcooked_ai
+
