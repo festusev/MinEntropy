@@ -153,6 +153,7 @@ class RlLibAgent(Agent):
                 "infos": np.array([{"other_action": self.other_player_action}]),
             }
         )
+
         if self.current_human_data is not None:
             import torch
 
@@ -504,6 +505,7 @@ class OvercookedMultiAgent(MultiAgentEnv):
         # take a step in the current base environment
 
         next_state: OvercookedState
+
         dense_reward: List[float]
         if self.use_phi:
             next_state, sparse_reward, done, info = self.base_env.step(

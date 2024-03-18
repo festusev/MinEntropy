@@ -65,6 +65,9 @@ class SimpleBuffer:
             self.evict()
 
     def evict(self):
+        if self.max_size == -1:
+            return
+
         num_over = self.obs.shape[0] - self.max_size
 
         self.obs = self.obs[num_over:]
@@ -82,4 +85,7 @@ class SimpleBuffer:
         return samples
 
     def __len__(self):
+        if self.max_size == -1:
+            return self.obs.shape[0]
+
         return min(self.obs.shape[0], self.max_size)
